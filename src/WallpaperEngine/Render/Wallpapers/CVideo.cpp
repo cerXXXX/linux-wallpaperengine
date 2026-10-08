@@ -11,8 +11,8 @@ using namespace WallpaperEngine::VideoPlayback::MPV;
 
 CVideo::CVideo (
     const Wallpaper& wallpaper, RenderContext& context, AudioContext& audioContext,
-    const WallpaperState::TextureUVsScaling& scalingMode, const uint32_t& clampMode
-) : CWallpaper (wallpaper, context, audioContext, scalingMode, clampMode) {
+    const WallpaperState::TextureUVsScaling& scalingMode, const uint32_t& clampMode, const glm::ivec2& outputSize
+) : CWallpaper (wallpaper, context, audioContext, scalingMode, clampMode, outputSize) {
     // setup framebuffers
     this->setupFramebuffers ();
 
@@ -25,6 +25,9 @@ CVideo::CVideo (
 	this->getContext (), this->CWallpaper::getWallpaperTexture (), videopath, 64, 64,
 	this->CWallpaper::getWallpaperFramebuffer ()
     );
+    this->m_player->setResolutionScaler ([this] (const glm::vec2& size) {
+	return this->getOutputResolutionScale (size);
+    });
     // --silent disables audio (audio.enabled = false) and must mute video wallpapers too;
     // a volume of 0 mutes the mpv backend (matching what --volume 0 already does).
     const auto& audioSettings = this->getContext ().getApp ().getContext ().settings.audio;

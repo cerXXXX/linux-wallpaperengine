@@ -24,8 +24,8 @@ using namespace WallpaperEngine::Render::Wallpapers;
 
 CScene::CScene (
     const Wallpaper& wallpaper, RenderContext& context, AudioContext& audioContext,
-    const WallpaperState::TextureUVsScaling& scalingMode, const uint32_t& clampMode
-) : CWallpaper (wallpaper, context, audioContext, scalingMode, clampMode) {
+    const WallpaperState::TextureUVsScaling& scalingMode, const uint32_t& clampMode, const glm::ivec2& outputSize
+) : CWallpaper (wallpaper, context, audioContext, scalingMode, clampMode, outputSize) {
     // caller should check this, if not a std::bad_cast is good to throw
     auto scene = wallpaper.as<Scene> ();
 
@@ -73,15 +73,26 @@ CScene::CScene (
     // TODO: CONVERSION
     this->m_camera->setOrthogonalProjection (width, height);
 
+    // the camera keeps working in scene units, only the framebuffers it renders to get smaller
+    this->m_resolutionScale
+	= this->getOutputResolutionScale ({ this->m_camera->getWidth (), this->m_camera->getHeight () });
+
     // setup framebuffers here as they're required for the scene setup
     this->setupFramebuffers ();
 
-    const uint32_t sceneWidth = this->m_camera->getWidth ();
-    const uint32_t sceneHeight = this->m_camera->getHeight ();
+    const uint32_t sceneWidth = this->m_sceneFBO->getRealWidth ();
+    const uint32_t sceneHeight = this->m_sceneFBO->getRealHeight ();
+
+    if (this->m_resolutionScale < 1.0f) {
+	sLog.out (
+	    "Rendering ", this->m_camera->getWidth (), "x", this->m_camera->getHeight (), " scene at ", sceneWidth, "x",
+	    sceneHeight
+	);
+    }
 
     this->_rt_shadowAtlas = this->create (
 	"_rt_shadowAtlas", TextureFormat_ARGB8888, TextureFlags_ClampUVs, 1.0, { sceneWidth, sceneHeight },
-	{ sceneWidth, sceneHeight }
+	{ sceneWidth, sceneHeight }, this->m_resolutionScale
     );
     this->alias ("_alias_lightCookie", "_rt_shadowAtlas");
 
@@ -121,8 +132,9 @@ CScene::CScene (
     // (it renders directly to the screen, whereas here we never do that from a scene)
     //
 
-    const auto bloomOrigin = glm::vec3 { sceneWidth / 2, sceneHeight / 2, 0.0f };
-    const auto bloomSize = glm::vec2 { sceneWidth, sceneHeight };
+    // the bloom image covers the whole scene, so its geometry is in scene units, not framebuffer pixels
+    const auto bloomOrigin = glm::vec3 { this->m_camera->getWidth () / 2, this->m_camera->getHeight () / 2, 0.0f };
+    const auto bloomSize = glm::vec2 { this->m_camera->getWidth (), this->m_camera->getHeight () };
 
     const JSON bloom
 	= { { "image", "models/wpenginelinux.json" },

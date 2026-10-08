@@ -5,6 +5,8 @@
 #include <mpv/render_gl.h>
 #include <mpv/stream_cb.h>
 
+#include <algorithm>
+#include <cmath>
 #include <vector>
 
 using namespace WallpaperEngine::VideoPlayback::MPV;
@@ -160,6 +162,24 @@ void GLPlayer::render () const {
 	    continue;
 	}
 
+	// mpv scales the video to the framebuffer's size, so a smaller one is all it takes to render it smaller
+	const float scale = this->m_resolutionScaler
+	    ? this->m_resolutionScaler ({ static_cast<float> (width), static_cast<float> (height) })
+	    : 1.0f;
+
+	if (scale < 1.0f) {
+	    const int64_t scaledWidth = std::max<int64_t> (1, std::lround (width * scale));
+	    const int64_t scaledHeight = std::max<int64_t> (1, std::lround (height * scale));
+
+	    // mpv reconfigures on every loop, only log when the size changes
+	    if (scaledWidth != this->m_width || scaledHeight != this->m_height) {
+		sLog.out ("Rendering ", width, "x", height, " video at ", scaledWidth, "x", scaledHeight);
+	    }
+
+	    width = scaledWidth;
+	    height = scaledHeight;
+	}
+
 	this->m_width = width;
 	this->m_height = height;
 	// reconfigure the texture
@@ -185,6 +205,10 @@ void GLPlayer::render () const {
 				  { MPV_RENDER_PARAM_INVALID, nullptr } };
 
     mpv_render_context_render (this->m_renderContext, params);
+}
+
+void GLPlayer::setResolutionScaler (std::function<float (const glm::vec2&)> scaler) {
+    this->m_resolutionScaler = std::move (scaler);
 }
 
 int GLPlayer::getWidth () const { return this->m_width; }

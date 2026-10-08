@@ -493,6 +493,14 @@ void ApplicationContext::loadSettingsFromArgv () {
 	.default_value (30)
 	.store_into (this->settings.render.maximumFPS);
 
+    performanceGroup.add_argument ("--downscale-to-output")
+	.help (
+	    "Renders scenes and videos bigger than the screen at the screen's resolution instead of their own, "
+	    "skipping detail the screen can't show"
+	)
+	.flag ()
+	.store_into (this->settings.render.downscaleToOutput);
+
     performanceGroup.add_argument ("--no-fullscreen-pause")
 	.help ("Prevents the background pausing when an app is fullscreen")
 	.flag ()

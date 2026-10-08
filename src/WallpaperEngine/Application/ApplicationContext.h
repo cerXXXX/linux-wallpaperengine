@@ -125,6 +125,8 @@ public:
 	     * Example: "firefox" will match "org.mozilla.firefox".
 	     */
 	    std::vector<std::string> fullscreenPauseIgnoreAppIds;
+	    /** Render scenes and videos bigger than the output at the output's resolution instead of their own */
+	    bool downscaleToOutput;
 	    /** Render debugging switches for scene compatibility work */
 	    struct {
 		bool baseOnly;
@@ -203,6 +205,7 @@ public:
             .pauseOnFullscreen = true,
             .pauseOnFullscreenOnlyWhenActive = false,
             .fullscreenPauseIgnoreAppIds = {},
+            .downscaleToOutput = false,
             .debug = {
                 .baseOnly = false,
                 .noSolidFinal = false,

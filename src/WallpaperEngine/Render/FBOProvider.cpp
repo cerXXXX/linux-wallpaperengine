@@ -6,21 +6,23 @@ using namespace WallpaperEngine::Data::Model;
 
 FBOProvider::FBOProvider (const FBOProvider* parent) : m_parent (parent) { }
 
-std::shared_ptr<CFBO> FBOProvider::create (const FBO& base, uint32_t flags, const glm::vec2 size) {
+std::shared_ptr<CFBO>
+FBOProvider::create (const FBO& base, uint32_t flags, const glm::vec2 size, const float resolutionScale) {
     return this->m_fbos[base.name] = std::make_shared<CFBO> (
 	       base.name,
 	       // TODO: PROPERLY DETERMINE FBO FORMAT BASED ON THE STRING
 	       TextureFormat_ARGB8888, flags, base.scale, size.x / base.scale, size.y / base.scale, size.x / base.scale,
-	       size.y / base.scale
+	       size.y / base.scale, resolutionScale
 	   );
 }
 
 std::shared_ptr<CFBO> FBOProvider::create (
     const std::string& name, TextureFormat format, uint32_t flags, float scale, glm::vec2 realSize,
-    glm::vec2 textureSize
+    glm::vec2 textureSize, const float resolutionScale
 ) {
     return this->m_fbos[name] = std::make_shared<CFBO> (
-	       name, TextureFormat_ARGB8888, flags, scale, realSize.x, realSize.y, textureSize.x, textureSize.y
+	       name, TextureFormat_ARGB8888, flags, scale, realSize.x, realSize.y, textureSize.x, textureSize.y,
+	       resolutionScale
 	   );
 }
 

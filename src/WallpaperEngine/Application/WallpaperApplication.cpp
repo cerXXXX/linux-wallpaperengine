@@ -451,7 +451,7 @@ void WallpaperApplication::advancePlaylist (
 		screen,
 		WallpaperEngine::Render::CWallpaper::fromWallpaper (
 		    *this->m_backgrounds[screen]->wallpaper, *this->m_renderContext, *this->m_audioContext,
-		    this->m_browserContext.get (), scaling, clamp
+		    this->m_browserContext.get (), scaling, clamp, this->getOutputSize (screen)
 		)
 	    );
 	}
@@ -602,8 +602,10 @@ void WallpaperApplication::takeScreenshot (const std::filesystem::path& filename
 	glFinish ();
 
 	// make room for storing the pixel of this viewport
-	const int readWidth = wallpaper->getWidth ();
-	const int readHeight = wallpaper->getHeight ();
+	// the FBO can be smaller than the wallpaper with --downscale-to-output
+	const glm::vec2 readSize = wallpaper->getRenderSize ({ wallpaper->getWidth (), wallpaper->getHeight () });
+	const int readWidth = static_cast<int> (readSize.x);
+	const int readHeight = static_cast<int> (readSize.y);
 	const auto bufferSize = readWidth * readHeight * 3;
 	auto* buffer = new uint8_t[bufferSize];
 
@@ -763,7 +765,8 @@ void WallpaperApplication::prepareOutputs () {
 	m_renderContext->setWallpaper (
 	    background,
 	    WallpaperEngine::Render::CWallpaper::fromWallpaper (
-		*info->wallpaper, *m_renderContext, *m_audioContext, m_browserContext.get (), scaling, clamp
+		*info->wallpaper, *m_renderContext, *m_audioContext, m_browserContext.get (), scaling, clamp,
+		this->getOutputSize (background)
 	    )
 	);
     }
@@ -783,6 +786,8 @@ void WallpaperApplication::prepareOutputs () {
 	// Compute the bounding box of all viewports in this span group
 	const auto& viewports = m_renderContext->getOutput ().getViewports ();
 	int minX = INT_MAX, minY = INT_MAX, maxX = INT_MIN, maxY = INT_MIN;
+	// physical pixels per logical pixel of the densest screen in the group
+	float maxPixelRatio = 1.0f;
 	bool anyFound = false;
 
 	for (const auto& screenName : spanGroup.screens) {
@@ -805,6 +810,10 @@ void WallpaperApplication::prepareOutputs () {
 	    minY = std::min (minY, y);
 	    maxX = std::max (maxX, x + w);
 	    maxY = std::max (maxY, y + h);
+
+	    if (w > 0) {
+		maxPixelRatio = std::max (maxPixelRatio, static_cast<float> (vp->viewport.z) / static_cast<float> (w));
+	    }
 	}
 
 	if (!anyFound) {
@@ -819,10 +828,15 @@ void WallpaperApplication::prepareOutputs () {
 	WallpaperEngine::Render::CWallpaper::SpanInfo spanInfo;
 	spanInfo.totalBounds = { minX, minY, maxX - minX, maxY - minY };
 
+	// the span is drawn as one picture covering the bounding box, at the densest screen's resolution
+	const glm::ivec2 outputSize = this->m_context.settings.render.downscaleToOutput
+	    ? glm::ivec2 (glm::ceil (glm::vec2 (maxX - minX, maxY - minY) * maxPixelRatio))
+	    : glm::ivec2 (0, 0);
+
 	// Create one shared wallpaper with the span group's scaling mode
 	auto sharedWallpaper = WallpaperEngine::Render::CWallpaper::fromWallpaper (
 	    *bgIt->second->wallpaper, *m_renderContext, *m_audioContext, m_browserContext.get (), spanGroup.scaling,
-	    spanGroup.clamp
+	    spanGroup.clamp, outputSize
 	);
 
 	// Convert to shared_ptr so it can be registered for multiple viewports
@@ -834,6 +848,21 @@ void WallpaperApplication::prepareOutputs () {
 	    m_renderContext->setWallpaper (screenName, shared);
 	}
     }
+}
+
+glm::ivec2 WallpaperApplication::getOutputSize (const std::string& screen) const {
+    if (!this->m_context.settings.render.downscaleToOutput) {
+	return { 0, 0 };
+    }
+
+    const auto& viewports = this->m_renderContext->getOutput ().getViewports ();
+    const auto it = viewports.find (screen);
+
+    if (it == viewports.end ()) {
+	return { 0, 0 };
+    }
+
+    return { it->second->viewport.z, it->second->viewport.w };
 }
 
 void WallpaperApplication::setupOpenGLDebugging () {

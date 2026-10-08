@@ -164,6 +164,10 @@ private:
     std::vector<std::size_t> buildPlaylistOrder (const ApplicationContext::PlaylistDefinition& definition);
     void ensureBrowserForProject (const Project& project);
     bool makeAnyViewportCurrent () const;
+    /**
+     * @return The size in pixels the given screen's wallpaper is limited to, 0x0 when it's rendered at full size
+     */
+    [[nodiscard]] glm::ivec2 getOutputSize (const std::string& screen) const;
 
     /** The application context that contains the current app settings */
     ApplicationContext& m_context;

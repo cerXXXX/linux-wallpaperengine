@@ -133,26 +133,48 @@ public:
     [[nodiscard]] virtual double getContentFrameRate () const;
 
     /**
+     * @return The factor framebuffers are scaled by so they're no bigger than the output needs, 1 for full size
+     */
+    [[nodiscard]] float getResolutionScale () const;
+
+    /**
+     * @param size A size in scene units
+     *
+     * @return The size in pixels to render something of the given size at
+     */
+    [[nodiscard]] glm::vec2 getRenderSize (const glm::vec2& size) const;
+
+    /**
      * Creates a new instance of CWallpaper based on the information provided by the read backgrounds
      *
      * @param wallpaper
      * @param context
      * @param audioContext
      * @param scalingMode
+     * @param outputSize Size in pixels of the output(s) showing the wallpaper, content bigger than it is rendered at
+     * the output's resolution; 0x0 renders everything at its own resolution
      *
      * @return
      */
     static std::unique_ptr<CWallpaper> fromWallpaper (
 	const Wallpaper& wallpaper, RenderContext& context, AudioContext& audioContext,
 	WebBrowser::WebBrowserContext* browserContext, const WallpaperState::TextureUVsScaling& scalingMode,
-	const uint32_t& clampMode
+	const uint32_t& clampMode, const glm::ivec2& outputSize = { 0, 0 }
     );
 
 protected:
     CWallpaper (
 	const Wallpaper& wallpaperData, RenderContext& context, AudioContext& audioContext,
-	const WallpaperState::TextureUVsScaling& scalingMode, const uint32_t& clampMode
+	const WallpaperState::TextureUVsScaling& scalingMode, const uint32_t& clampMode,
+	const glm::ivec2& outputSize = { 0, 0 }
     );
+
+    /**
+     * @param contentSize The size the content would be rendered at
+     *
+     * @return The factor to render content of that size at so it's no bigger than the output needs, at most 1
+     */
+    [[nodiscard]] float getOutputResolutionScale (const glm::vec2& contentSize) const;
 
     /**
      * Renders a frame of the wallpaper
@@ -173,6 +195,9 @@ protected:
 
     GLuint m_vaoBuffer = GL_NONE;
 
+    /** Factor the wallpaper's framebuffers are scaled by, see getResolutionScale () */
+    float m_resolutionScale = 1.0f;
+
 private:
     /** The texture used for the scene output */
     GLuint m_texCoordBuffer = GL_NONE;
@@ -192,6 +217,8 @@ private:
     AudioContext& m_audioContext;
     /** Current Wallpaper state */
     WallpaperState m_state;
+    /** Size in pixels of the output(s) showing this wallpaper, 0x0 when content is rendered at its own size */
+    glm::ivec2 m_outputSize;
     /** Span info for multi-monitor spanning (optional) */
     std::optional<SpanInfo> m_spanInfo = std::nullopt;
     /** Frame counter to avoid redundant renderFrame calls when shared across viewports */

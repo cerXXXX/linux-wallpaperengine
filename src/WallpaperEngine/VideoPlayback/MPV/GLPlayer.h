@@ -4,6 +4,8 @@
 #include "WallpaperEngine/Render/RenderContext.h"
 
 #include <GL/glew.h>
+#include <functional>
+#include <glm/vec2.hpp>
 #include <mpv/client.h>
 #include <mpv/render.h>
 #include <string>
@@ -45,6 +47,10 @@ public:
     void setVolume (double volume);
     void setPaused ();
     void clearPaused ();
+    /**
+     * @param scaler Returns the factor to render a video of the given size at, the video plays at full size without it
+     */
+    void setResolutionScaler (std::function<float (const glm::vec2&)> scaler);
 
     void render () const;
 
@@ -70,6 +76,7 @@ protected:
     mutable int64_t m_width;
     mutable int64_t m_height;
     mutable double m_frameRate = 0.0;
+    std::function<float (const glm::vec2&)> m_resolutionScaler;
     mpv_handle* m_handle = nullptr;
     mpv_render_context* m_renderContext = nullptr;
     double m_volume = 0.0f;

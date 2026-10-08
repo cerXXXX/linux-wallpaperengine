@@ -268,11 +268,16 @@ CImage::CImage (Wallpapers::CScene& scene, const Image& image) :
     nameA << "_rt_imageLayerComposite_" << this->getImage ().id << "_a";
     nameB << "_rt_imageLayerComposite_" << this->getImage ().id << "_b";
 
+    // the layer only needs as many pixels as it takes on the output
+    const glm::vec2 renderSize = scene.getRenderSize (size);
+
     this->m_currentMainFBO = this->m_mainFBO = scene.create (
-	nameA.str (), TextureFormat_ARGB8888, this->m_texture->getFlags (), 1, { size.x, size.y }, { size.x, size.y }
+	nameA.str (), TextureFormat_ARGB8888, this->m_texture->getFlags (), 1, renderSize, renderSize,
+	scene.getResolutionScale ()
     );
     this->m_currentSubFBO = this->m_subFBO = scene.create (
-	nameB.str (), TextureFormat_ARGB8888, this->m_texture->getFlags (), 1, { size.x, size.y }, { size.x, size.y }
+	nameB.str (), TextureFormat_ARGB8888, this->m_texture->getFlags (), 1, renderSize, renderSize,
+	scene.getResolutionScale ()
     );
 
     // build a list of vertices, these might need some change later (or maybe invert the camera)
@@ -650,7 +655,10 @@ void CImage::setup () {
 
 	    // create all the fbos for this effect
 	    for (const auto& fbo : cur->effect->fbos) {
-		fboProvider->create (*fbo, this->m_texture->getFlags (), this->getSize ());
+		fboProvider->create (
+		    *fbo, this->m_texture->getFlags (), this->getScene ().getRenderSize (this->getSize ()),
+		    this->getScene ().getResolutionScale ()
+		);
 	    }
 
 	    // TODO: MAKE USE OF ZIP OPERATOR IN BOOST? WAY OVERKILL JUST FOR THIS...
@@ -1134,7 +1142,14 @@ glm::vec2 CImage::getSize () const {
 	return this->getImage ().size;
     }
 
-    return { this->m_texture->getRealWidth (), this->m_texture->getRealHeight () };
+    const glm::vec2 size = { this->m_texture->getRealWidth (), this->m_texture->getRealHeight () };
+
+    // framebuffers can be rendered smaller than the scene area they cover
+    if (const auto fbo = std::dynamic_pointer_cast<const CFBO> (this->m_texture); fbo != nullptr) {
+	return size / fbo->getResolutionScale ();
+    }
+
+    return size;
 }
 
 GLuint CImage::getSceneSpacePosition () const { return this->m_sceneSpacePosition; }

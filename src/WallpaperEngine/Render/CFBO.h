@@ -11,12 +11,16 @@ class CFBO final : public TextureProvider {
 public:
     CFBO (
 	std::string name, const TextureFormat format, const uint32_t flags, const float scale, uint32_t realWidth,
-	uint32_t realHeight, uint32_t textureWidth, uint32_t textureHeight
+	uint32_t realHeight, uint32_t textureWidth, uint32_t textureHeight, float resolutionScale = 1.0f
     );
     ~CFBO () override;
 
     [[nodiscard]] const std::string& getName () const;
     [[nodiscard]] const float& getScale () const;
+    /**
+     * @return How much smaller than its size in scene units this framebuffer was created (1 = same size)
+     */
+    [[nodiscard]] float getResolutionScale () const;
     [[nodiscard]] TextureFormat getFormat () const override;
     [[nodiscard]] uint32_t getFlags () const override;
     [[nodiscard]] GLuint getFramebuffer () const;
@@ -45,6 +49,7 @@ private:
     GLuint m_texture = GL_NONE;
     glm::vec4 m_resolution = {};
     float m_scale = 0;
+    float m_resolutionScale = 1.0f;
     std::string m_name = "";
     TextureFormat m_format = TextureFormat_UNKNOWN;
     uint32_t m_flags = TextureFlags_NoFlags;

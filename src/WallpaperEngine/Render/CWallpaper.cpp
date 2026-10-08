@@ -11,10 +11,10 @@ using namespace WallpaperEngine::Render;
 
 CWallpaper::CWallpaper (
     const Wallpaper& wallpaperData, RenderContext& context, AudioContext& audioContext,
-    const WallpaperState::TextureUVsScaling& scalingMode, const uint32_t& clampMode
+    const WallpaperState::TextureUVsScaling& scalingMode, const uint32_t& clampMode, const glm::ivec2& outputSize
 ) :
     ContextAware (context), FBOProvider (nullptr), m_wallpaperData (wallpaperData), m_audioContext (audioContext),
-    m_state (scalingMode, clampMode) {
+    m_state (scalingMode, clampMode), m_outputSize (outputSize) {
     // generate the VAO to stop opengl from complaining
     glGenVertexArrays (1, &this->m_vaoBuffer);
     glBindVertexArray (this->m_vaoBuffer);
@@ -311,15 +311,38 @@ void CWallpaper::setPause (bool newState) { }
 
 double CWallpaper::getContentFrameRate () const { return 0.0; }
 
+float CWallpaper::getResolutionScale () const { return this->m_resolutionScale; }
+
+glm::vec2 CWallpaper::getRenderSize (const glm::vec2& size) const {
+    if (this->m_resolutionScale == 1.0f) {
+	return size;
+    }
+
+    return glm::max (glm::round (size * this->m_resolutionScale), glm::vec2 (1.0f));
+}
+
+float CWallpaper::getOutputResolutionScale (const glm::vec2& contentSize) const {
+    if (this->m_outputSize.x <= 0 || this->m_outputSize.y <= 0 || contentSize.x <= 0.0f || contentSize.y <= 0.0f) {
+	return 1.0f;
+    }
+
+    const float scaleX = static_cast<float> (this->m_outputSize.x) / contentSize.x;
+    const float scaleY = static_cast<float> (this->m_outputSize.y) / contentSize.y;
+    // fit shows the whole content inside the output, the other modes crop or stretch it to cover the output
+    const float scale = this->m_state.getTextureUVsScaling () == WallpaperState::TextureUVsScaling::ZoomFitUVs
+	? std::min (scaleX, scaleY)
+	: std::max (scaleX, scaleY);
+
+    return std::min (scale, 1.0f);
+}
+
 void CWallpaper::setupFramebuffers () {
-    const uint32_t width = this->getWidth ();
-    const uint32_t height = this->getHeight ();
+    const glm::vec2 size = this->getRenderSize ({ this->getWidth (), this->getHeight () });
     const uint32_t clamp = this->m_state.getClampingMode ();
 
     // create framebuffer for the scene
-    this->m_sceneFBO = this->create (
-	"_rt_FullFrameBuffer", TextureFormat_ARGB8888, clamp, 1.0, { width, height }, { width, height }
-    );
+    this->m_sceneFBO
+	= this->create ("_rt_FullFrameBuffer", TextureFormat_ARGB8888, clamp, 1.0, size, size, this->m_resolutionScale);
 
     this->alias ("_rt_MipMappedFrameBuffer", "_rt_FullFrameBuffer");
 }
@@ -343,17 +366,17 @@ std::shared_ptr<const CFBO> CWallpaper::getFBO () const { return this->m_sceneFB
 std::unique_ptr<CWallpaper> CWallpaper::fromWallpaper (
     const Wallpaper& wallpaper, RenderContext& context, AudioContext& audioContext,
     WebBrowser::WebBrowserContext* browserContext, const WallpaperState::TextureUVsScaling& scalingMode,
-    const uint32_t& clampMode
+    const uint32_t& clampMode, const glm::ivec2& outputSize
 ) {
     if (wallpaper.is<Scene> ()) {
 	return std::make_unique<WallpaperEngine::Render::Wallpapers::CScene> (
-	    wallpaper, context, audioContext, scalingMode, clampMode
+	    wallpaper, context, audioContext, scalingMode, clampMode, outputSize
 	);
     }
 
     if (wallpaper.is<Video> ()) {
 	return std::make_unique<WallpaperEngine::Render::Wallpapers::CVideo> (
-	    wallpaper, context, audioContext, scalingMode, clampMode
+	    wallpaper, context, audioContext, scalingMode, clampMode, outputSize
 	);
     }
 

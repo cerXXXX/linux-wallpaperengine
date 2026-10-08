@@ -5,8 +5,10 @@ using namespace WallpaperEngine::Render;
 
 CFBO::CFBO (
     std::string name, const TextureFormat format, const uint32_t flags, const float scale, uint32_t realWidth,
-    uint32_t realHeight, uint32_t textureWidth, uint32_t textureHeight
-) : m_scale (scale), m_name (std::move (name)), m_format (format), m_flags (flags) {
+    uint32_t realHeight, uint32_t textureWidth, uint32_t textureHeight, const float resolutionScale
+) :
+    m_scale (scale), m_resolutionScale (resolutionScale), m_name (std::move (name)), m_format (format),
+    m_flags (flags) {
     // create an empty texture that'll be free'd so the FBO is transparent
     constexpr GLenum drawBuffers[1] = { GL_COLOR_ATTACHMENT0 };
     // create the main framebuffer
@@ -88,6 +90,8 @@ CFBO::~CFBO () {
 const std::string& CFBO::getName () const { return this->m_name; }
 
 const float& CFBO::getScale () const { return this->m_scale; }
+
+float CFBO::getResolutionScale () const { return this->m_resolutionScale; }
 
 TextureFormat CFBO::getFormat () const { return this->m_format; }
 
