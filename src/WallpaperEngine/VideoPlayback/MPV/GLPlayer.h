@@ -60,6 +60,10 @@ public:
      * @return The video's frame rate as stored in the file, 0 until playback starts or if the file doesn't specify it
      */
     double getFrameRate () const;
+    /**
+     * @return If mpv has a decoded frame to render, false until playback starts
+     */
+    bool hasFrame () const;
 
 private:
     void prepareGL ();
@@ -76,6 +80,7 @@ protected:
     mutable int64_t m_width;
     mutable int64_t m_height;
     mutable double m_frameRate = 0.0;
+    mutable bool m_hasFrame = false;
     std::function<float (const glm::vec2&)> m_resolutionScaler;
     mpv_handle* m_handle = nullptr;
     mpv_render_context* m_renderContext = nullptr;

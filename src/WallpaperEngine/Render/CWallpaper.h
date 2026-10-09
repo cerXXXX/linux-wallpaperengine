@@ -133,6 +133,12 @@ public:
     [[nodiscard]] virtual double getContentFrameRate () const;
 
     /**
+     * @return If a rendered frame shows the wallpaper's content yet (a video has nothing to show before its first
+     * decoded frame)
+     */
+    [[nodiscard]] virtual bool hasContent () const;
+
+    /**
      * @return The factor framebuffers are scaled by so they're no bigger than the output needs, 1 for full size
      */
     [[nodiscard]] float getResolutionScale () const;

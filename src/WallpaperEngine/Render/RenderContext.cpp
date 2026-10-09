@@ -6,6 +6,7 @@
 #include "RenderContext.h"
 
 #include "WallpaperEngine/Data/Model/Project.h"
+#include "WallpaperEngine/Logging/Log.h"
 
 namespace WallpaperEngine::Render {
 RenderContext::RenderContext (
@@ -26,17 +27,38 @@ void RenderContext::render (Drivers::Output::OutputViewport* viewport) {
     // search the background in the viewport selection
 
     // render the background
-    if (const auto ref = this->m_wallpapers.find (viewport->name); ref != this->m_wallpapers.end ()) {
+    const auto ref = this->m_wallpapers.find (viewport->name);
+
+    if (ref != this->m_wallpapers.end ()) {
 	ref->second->render (
 	    viewport->viewport, this->getOutput ().renderVFlip (), viewport->globalPosition, viewport->logicalSize
 	);
     }
+
+    viewport->swappingContent = ref != this->m_wallpapers.end () && ref->second->hasContent ();
 
 #if !NDEBUG
     glPopDebugGroup ();
 #endif /* DEBUG */
 
     viewport->swapOutput ();
+}
+
+void RenderContext::framePresented (const Drivers::Output::OutputViewport* viewport) {
+    if (this->m_firstFrameReported) {
+	return;
+    }
+
+    this->m_presented.insert (viewport->name);
+
+    for (const auto& screen : this->m_wallpapers | std::views::keys) {
+	if (!this->m_presented.contains (screen)) {
+	    return;
+	}
+    }
+
+    this->m_firstFrameReported = true;
+    sLog.out ("First frame presented");
 }
 
 void RenderContext::setWallpaper (const std::string& display, std::shared_ptr<CWallpaper> wallpaper) {

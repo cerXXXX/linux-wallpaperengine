@@ -2,6 +2,7 @@
 
 #include <glm/vec4.hpp>
 #include <memory>
+#include <set>
 #include <vector>
 
 #include "TextureCache.h"
@@ -38,6 +39,11 @@ namespace Render {
 	RenderContext (Drivers::VideoDriver& driver, WallpaperApplication& app, Media::MediaSource& mediaSource);
 
 	void render (Drivers::Output::OutputViewport* viewport);
+	/**
+	 * The compositor has shown a frame with the wallpaper's content on the viewport; once every wallpaper's has
+	 * been shown this prints "First frame presented" (a launcher waits for it before freezing the process)
+	 */
+	void framePresented (const Drivers::Output::OutputViewport* viewport);
 	void setWallpaper (const std::string& display, std::shared_ptr<CWallpaper> wallpaper);
 	void setPause (bool newState) const;
 	[[nodiscard]] Input::InputContext& getInputContext () const;
@@ -59,6 +65,9 @@ namespace Render {
 	Media::MediaSource& m_mediaSource;
 	/** Texture cache for the render */
 	std::unique_ptr<TextureCache> m_textureCache = nullptr;
+	/** Screens whose wallpaper the compositor has shown a frame of */
+	std::set<std::string> m_presented = {};
+	bool m_firstFrameReported = false;
     };
 } // namespace Render
 } // namespace WallpaperEngine

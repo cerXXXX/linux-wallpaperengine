@@ -22,6 +22,7 @@ public:
     [[nodiscard]] int getWidth () const override;
     [[nodiscard]] int getHeight () const override;
     [[nodiscard]] double getContentFrameRate () const override;
+    [[nodiscard]] bool hasContent () const override;
 
     void setPause (bool newState) override;
 

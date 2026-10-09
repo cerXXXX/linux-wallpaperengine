@@ -69,3 +69,5 @@ int CVideo::getWidth () const { return this->m_player ? this->m_player->getWidth
 int CVideo::getHeight () const { return this->m_player ? this->m_player->getHeight () : 16; }
 
 double CVideo::getContentFrameRate () const { return this->m_player ? this->m_player->getFrameRate () : 0.0; }
+
+bool CVideo::hasContent () const { return this->m_player && this->m_player->hasFrame (); }

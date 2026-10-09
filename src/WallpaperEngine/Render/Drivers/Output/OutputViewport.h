@@ -19,6 +19,8 @@ public:
 
     /** Whether this viewport is single in the framebuffer or shares space with more viewports */
     bool single;
+    /** Whether the frame being swapped shows the wallpaper's content (set by the render context before swapping) */
+    bool swappingContent = false;
 
     /**
      * Activates output's context for drawing

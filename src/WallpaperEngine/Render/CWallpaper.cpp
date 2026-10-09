@@ -311,6 +311,8 @@ void CWallpaper::setPause (bool newState) { }
 
 double CWallpaper::getContentFrameRate () const { return 0.0; }
 
+bool CWallpaper::hasContent () const { return true; }
+
 float CWallpaper::getResolutionScale () const { return this->m_resolutionScale; }
 
 glm::vec2 CWallpaper::getRenderSize (const glm::vec2& size) const {

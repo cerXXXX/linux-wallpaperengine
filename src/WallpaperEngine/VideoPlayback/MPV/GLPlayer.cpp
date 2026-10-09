@@ -138,6 +138,11 @@ void GLPlayer::render () const {
 	    break;
 	}
 
+	// playback starts once the first frame is decoded, so this render already draws it
+	if (event->event_id == MPV_EVENT_PLAYBACK_RESTART) {
+	    this->m_hasFrame = true;
+	}
+
 	if (event->event_id != MPV_EVENT_VIDEO_RECONFIG) {
 	    continue;
 	}
@@ -214,6 +219,7 @@ void GLPlayer::setResolutionScaler (std::function<float (const glm::vec2&)> scal
 int GLPlayer::getWidth () const { return this->m_width; }
 int GLPlayer::getHeight () const { return this->m_height; }
 double GLPlayer::getFrameRate () const { return this->m_frameRate; }
+bool GLPlayer::hasFrame () const { return this->m_hasFrame; }
 
 void GLPlayer::prepareGL () {
     if (!this->m_doWeOwnFramebuffer || this->m_fbo != GL_NONE) {

@@ -97,6 +97,10 @@ static void surfaceFrameCallback (void* data, struct wl_callback* cb, uint32_t t
     wl_callback_destroy (cb);
 
     viewport->frameCallback = nullptr;
+    // the compositor asks for the next frame once it has shown the last one
+    if (viewport->callbackHasContent) {
+	viewport->getDriver ()->getApp ().framePresented (viewport);
+    }
     viewport->rendering = true;
     viewport->getDriver ()->getApp ().update (viewport);
     viewport->rendering = false;
@@ -265,6 +269,7 @@ void WaylandOutputViewport::swapOutput () {
 
     this->makeCurrent ();
     frameCallback = wl_surface_frame (surface);
+    callbackHasContent = swappingContent;
     wl_callback_add_listener (frameCallback, &frameListener, this);
     eglSwapBuffers (m_driver->getEGLContext ()->display, this->eglSurface);
     wl_surface_set_buffer_scale (surface, scale);

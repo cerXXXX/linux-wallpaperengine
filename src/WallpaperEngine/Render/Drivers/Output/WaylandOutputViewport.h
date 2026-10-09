@@ -53,6 +53,8 @@ namespace Output {
 	wl_cursor* pointer = nullptr;
 	wl_surface* cursorSurface = nullptr;
 	bool callbackInitialized = false;
+	/** Whether the frame the pending frame callback belongs to shows the wallpaper's content */
+	bool callbackHasContent = false;
 	bool hasXdgLogicalPosition = false;
 	zxdg_output_v1* xdgOutput = nullptr;
 

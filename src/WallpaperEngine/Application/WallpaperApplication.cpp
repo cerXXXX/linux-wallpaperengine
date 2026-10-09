@@ -1084,6 +1084,10 @@ void WallpaperApplication::update (Render::Drivers::Output::OutputViewport* view
     m_renderContext->render (viewport);
 }
 
+void WallpaperApplication::framePresented (const Render::Drivers::Output::OutputViewport* viewport) {
+    m_renderContext->framePresented (viewport);
+}
+
 void WallpaperApplication::signal (int signal) {
     sLog.out ("Stop requested by signal ", signal);
     this->m_context.state.general.keepRunning = false;

@@ -68,6 +68,10 @@ public:
      */
     void update (Render::Drivers::Output::OutputViewport* viewport);
     /**
+     * The compositor has shown a frame with the wallpaper's content on the viewport
+     */
+    void framePresented (const Render::Drivers::Output::OutputViewport* viewport);
+    /**
      * Gets the output
      */
     [[nodiscard]] const WallpaperEngine::Render::Drivers::Output::Output& getOutput () const;
