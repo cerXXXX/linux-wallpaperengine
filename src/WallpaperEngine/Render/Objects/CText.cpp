@@ -1,5 +1,8 @@
 #include "CText.h"
+#include "CImage.h"
 
+#include <algorithm>
+#include <cctype>
 #include <filesystem>
 #include <vector>
 
@@ -29,7 +32,72 @@ const std::vector<std::string> kFontCandidates = {
     "/usr/share/fonts/TTF/DejaVuSans.ttf",
     "/usr/share/fonts/dejavu/DejaVuSans.ttf",
     "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+    "/usr/share/fonts/liberation/LiberationSans-Regular.ttf",
 };
+
+// used for the monospaced system fonts wallpapers ask for (systemfont_consolas, systemfont_couriernew...)
+const std::vector<std::string> kMonospaceFontCandidates = {
+    "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+    "/usr/share/fonts/TTF/DejaVuSansMono.ttf",
+    "/usr/share/fonts/dejavu/DejaVuSansMono.ttf",
+    "/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf",
+    "/usr/share/fonts/liberation/LiberationMono-Regular.ttf",
+};
+
+// Wallpaper Engine sizes text in points at 300 DPI: a pointsize of 33 is a ~137 units tall em in the scene
+constexpr float kPointsToSceneUnits = 300.0f / 72.0f;
+
+bool isMonospaceSystemFont (const std::string& font) {
+    if (font.rfind ("systemfont_", 0) != 0) {
+	return false;
+    }
+
+    std::string name = font.substr (11);
+    std::ranges::transform (name, name.begin (), [] (unsigned char c) { return std::tolower (c); });
+
+    return name.find ("consola") != std::string::npos || name.find ("courier") != std::string::npos
+	|| name.find ("mono") != std::string::npos || name.find ("lucidaconsole") != std::string::npos;
+}
+
+// decodes UTF-8 into code points, invalid bytes are kept as-is so they still show up as something
+std::u32string decodeUtf8 (const std::string& text) {
+    std::u32string result;
+    result.reserve (text.size ());
+
+    for (size_t i = 0; i < text.size ();) {
+	const auto lead = static_cast<unsigned char> (text[i]);
+	int length = 1;
+	char32_t codepoint = lead;
+
+	if (lead >= 0xF0 && lead < 0xF8) {
+	    length = 4;
+	    codepoint = lead & 0x07;
+	} else if (lead >= 0xE0) {
+	    length = lead < 0xF0 ? 3 : 1;
+	    codepoint = lead & 0x0F;
+	} else if (lead >= 0xC0) {
+	    length = 2;
+	    codepoint = lead & 0x1F;
+	}
+
+	bool valid = length > 1 && i + length <= text.size ();
+	for (int j = 1; valid && j < length; ++j) {
+	    const auto next = static_cast<unsigned char> (text[i + j]);
+	    valid = (next & 0xC0) == 0x80;
+	    codepoint = (codepoint << 6) | (next & 0x3F);
+	}
+
+	if (!valid) {
+	    length = 1;
+	    codepoint = lead;
+	}
+
+	result.push_back (codepoint);
+	i += length;
+    }
+
+    return result;
+}
 
 const char* kVertexShader = R"glsl(
 #version 330 core
@@ -81,7 +149,8 @@ CText::CText (Wallpapers::CScene& scene, const Text& text) :
     this->registerProperty ("scale", *text.scale->value);
     this->registerProperty ("visible", *text.visible->value);
     this->registerProperty ("pointSize", *text.pointSize->value);
-    this->registerProperty ("text", *text.text->value);
+    // the text script runs as a layer script (see initScriptLayer)
+    this->registerProperty ("text", *text.text->value, false);
     this->registerProperty ("pointSize", *text.pointSize->value);
 }
 
@@ -128,6 +197,7 @@ void CText::setup () {
     }
 
     m_lastPixelSize = computeEffectivePixelSize ();
+    m_rasterToScene = computeEmSize () / static_cast<float> (m_lastPixelSize);
     FT_Set_Pixel_Sizes (m_ftFace, 0, static_cast<FT_UInt> (m_lastPixelSize));
 
     buildShader ();
@@ -184,10 +254,20 @@ bool CText::loadEmbeddedFont () {
 
 bool CText::loadSystemFont () {
     std::string fontPath;
+    if (isMonospaceSystemFont (m_text.font)) {
+	for (const auto& candidate : kMonospaceFontCandidates) {
+	    if (std::filesystem::exists (candidate)) {
+		fontPath = candidate;
+		break;
+	    }
+	}
+    }
     for (const auto& candidate : kFontCandidates) {
+	if (!fontPath.empty ()) {
+	    break;
+	}
 	if (std::filesystem::exists (candidate)) {
 	    fontPath = candidate;
-	    break;
 	}
     }
     if (fontPath.empty ()) {
@@ -201,15 +281,16 @@ bool CText::loadSystemFont () {
     return true;
 }
 
+float CText::computeEmSize () const { return m_text.pointSize->value->getFloat () * kPointsToSceneUnits; }
+
 unsigned int CText::computeEffectivePixelSize () const {
-    // WE text objects often come with scale ~0.09 that, combined with a modest
-    // pointsize, would rasterize glyphs to ~2px on screen (invisible). Rasterize
-    // at higher resolution so that after the model scale is applied in render()
-    // the on-screen size matches the intended pointsize.
-    const glm::vec3 initialScale = m_text.scale->value->getVec3 ();
-    const float avgScale = (initialScale.x + initialScale.y) * 0.5f;
-    const float compensate = (avgScale > 0.0f && avgScale < 1.0f) ? std::min (1.0f / avgScale, 32.0f) : 1.0f;
-    return std::max<unsigned int> (1u, static_cast<unsigned int> (m_text.pointSize->value->getFloat () * compensate));
+    // rasterize the glyphs at the size they end up taking in the scene (including the parents' scale) so small
+    // labels stay sharp and big clocks don't get blurry when stretched
+    const glm::vec3 scale = CImage::resolveTransform (this->getScene (), m_text).scale;
+    const float avgScale = (std::abs (scale.x) + std::abs (scale.y)) * 0.5f;
+    const float pixels = computeEmSize () * (avgScale > 0.0f ? avgScale : 1.0f);
+
+    return static_cast<unsigned int> (std::clamp (pixels, 8.0f, 1024.0f));
 }
 
 void CText::initScriptLayer () {
@@ -237,12 +318,13 @@ void CText::rebuildTextureFrom (const std::string& text) {
     // already allocated, so dynamic/scripted text can regenerate the glyph
     // bitmap every time the rendered string changes without leaking.
     FT_GlyphSlot slot = m_ftFace->glyph;
+    const std::u32string codepoints = decodeUtf8 (text);
 
     int penX = 0;
     int maxAscent = 0;
     int maxDescent = 0;
 
-    for (unsigned char c : text) {
+    for (const char32_t c : codepoints) {
 	if (FT_Load_Char (m_ftFace, static_cast<FT_ULong> (c), FT_LOAD_RENDER) != 0) {
 	    continue;
 	}
@@ -256,7 +338,7 @@ void CText::rebuildTextureFrom (const std::string& text) {
     std::vector<uint8_t> pixels (static_cast<size_t> (width) * height, 0);
 
     penX = 0;
-    for (unsigned char c : text) {
+    for (const char32_t c : codepoints) {
 	if (FT_Load_Char (m_ftFace, static_cast<FT_ULong> (c), FT_LOAD_RENDER) != 0) {
 	    continue;
 	}
@@ -294,7 +376,7 @@ void CText::rebuildTextureFrom (const std::string& text) {
     }
 
     m_textureSize = { width, height };
-    m_quadSize = { static_cast<float> (width), static_cast<float> (height) };
+    m_quadSize = { static_cast<float> (width) * m_rasterToScene, static_cast<float> (height) * m_rasterToScene };
     m_lastRenderedText = text;
 
     uploadQuadVertices ();
@@ -374,7 +456,7 @@ void CText::render () {
     if (!m_valid) {
 	return;
     }
-    if (!m_text.visible->value->getBool ()) {
+    if (!CImage::isVisibleInHierarchy (this->getScene (), m_text)) {
 	return;
     }
 
@@ -396,42 +478,46 @@ void CText::render () {
     const unsigned int pixelSize = computeEffectivePixelSize ();
     if (pixelSize != m_lastPixelSize) {
 	m_lastPixelSize = pixelSize;
+	m_rasterToScene = computeEmSize () / static_cast<float> (m_lastPixelSize);
 	FT_Set_Pixel_Sizes (m_ftFace, 0, static_cast<FT_UInt> (m_lastPixelSize));
 	rebuildTextureFrom (renderedText);
     } else if (renderedText != m_lastRenderedText) {
 	rebuildTextureFrom (renderedText);
     }
 
-    const glm::vec4 color = m_text.color->value->getVec4 ();
+    // colors are stored as vec3 (their vec4 has a zero alpha), the opacity comes from the alpha property
+    const glm::vec3 color = m_text.color->value->getVec3 ();
     const float alpha = m_text.alpha->value->getFloat ();
-    const glm::vec3 scale = m_text.scale->value->getVec3 ();
-    const glm::vec3 origin = m_text.origin->value->getVec3 ();
+    // text objects are usually parented to a group or an image, their origin is relative to it
+    const auto transform = CImage::resolveTransform (getScene (), m_text);
 
-    // WE uses a Y-down coordinate system (origin at top-left, y increases downward).
-    // The final FBO is presented to screen with vflip=true on Wayland/GLFW, which maps
-    // GL y- to screen top and GL y+ to screen bottom. This effectively inverts Y again,
-    // so we need: gl_y = origin.y - scene_h/2  (not the CImage-style scene_h/2 - origin.y).
-    // CImage pre-compensates for X11 (no vflip) and gets corrected by the Wayland vflip.
-    // CText renders with direct vflip-aware coordinates.
+    // same conventions as CImage: scene.json is Y-up with the origin at the bottom-left corner, the scene
+    // camera maps it to GL with the Y axis flipped, and angles rotate the same way images do
     const float scene_w = getScene ().getCamera ().getWidth ();
     const float scene_h = getScene ().getCamera ().getHeight ();
     const glm::vec3 gl_origin = {
-	origin.x - scene_w * 0.5f,
-	origin.y - scene_h * 0.5f,
-	origin.z,
+	transform.origin.x - scene_w * 0.5f,
+	scene_h * 0.5f - transform.origin.y,
+	transform.origin.z,
     };
 
     glm::mat4 model = glm::translate (glm::mat4 (1.0f), gl_origin);
-    model = glm::scale (model, scale);
+    model = glm::rotate (model, -transform.angle, glm::vec3 (0.0f, 0.0f, 1.0f));
+    model = glm::scale (model, transform.scale);
 
     const glm::mat4 mvp = getScene ().getCamera ().getProjection () * getScene ().getCamera ().getLookAt () * model;
 
+    // image passes leave their own state behind (alpha writes masked, depth test, culling...)
+    glColorMask (true, true, true, true);
+    glDisable (GL_DEPTH_TEST);
+    glDisable (GL_CULL_FACE);
     glEnable (GL_BLEND);
-    glBlendFunc (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glBlendEquation (GL_FUNC_ADD);
+    glBlendFuncSeparate (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 
     glUseProgram (m_program);
     glUniformMatrix4fv (m_uMVP, 1, GL_FALSE, glm::value_ptr (mvp));
-    glUniform4f (m_uColor, color.r, color.g, color.b, color.a * alpha);
+    glUniform4f (m_uColor, color.r, color.g, color.b, alpha);
 
     glActiveTexture (GL_TEXTURE0);
     glBindTexture (GL_TEXTURE_2D, m_texture);

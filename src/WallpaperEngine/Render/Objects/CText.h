@@ -58,11 +58,14 @@ private:
     bool loadEmbeddedFont ();
     bool loadSystemFont ();
     unsigned int computeEffectivePixelSize () const;
+    [[nodiscard]] float computeEmSize () const;
     void initScriptLayer ();
 
     const Text& m_text;
     std::string m_lastRenderedText;
     unsigned int m_lastPixelSize = 0;
+    /** Scene units per rasterized pixel, the glyphs are rasterized at the size they take on the scene */
+    float m_rasterToScene = 1.0f;
     Scripting::ScriptLayerHandle m_layerHandle = Scripting::kInvalidLayerHandle;
 
     FT_Library m_ftLibrary = nullptr;

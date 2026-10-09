@@ -1,4 +1,5 @@
 #include "CParticle.h"
+#include "CImage.h"
 
 #include "WallpaperEngine/Data/Model/Property.h"
 #include "WallpaperEngine/Logging/Log.h"
@@ -170,7 +171,7 @@ void CParticle::setup () {
 }
 
 void CParticle::render () {
-    if (!m_initialized || !m_particle.visible->value->getBool ()) {
+    if (!m_initialized || !CImage::isVisibleInHierarchy (this->getScene (), m_particle)) {
 	return;
     }
 

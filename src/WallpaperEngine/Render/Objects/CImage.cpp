@@ -1,5 +1,7 @@
 #include "CImage.h"
 
+#include <cmath>
+
 #include "CRenderable.h"
 
 #include <algorithm>
@@ -128,7 +130,43 @@ CImage::ResolvedTransform CImage::localTransform (const Object& object) {
     return { origin, scale, angle };
 }
 
+bool CImage::isVisibleInHierarchy (const Wallpapers::CScene& scene, const Object& object) {
+    constexpr int kMaxParentDepth = 32;
+    const Object* current = &object;
+
+    for (int depth = 0; current != nullptr && depth <= kMaxParentDepth; ++depth) {
+	// "visible" scripts drive groupVisible (the first registered property), user settings drive both
+	const UserSetting* visible = nullptr;
+
+	if (current->is<Image> ()) {
+	    visible = current->as<Image> ()->visible.get ();
+	} else if (current->is<Text> ()) {
+	    visible = current->as<Text> ()->visible.get ();
+	} else if (current->is<Particle> ()) {
+	    visible = current->as<Particle> ()->visible.get ();
+	}
+
+	if ((visible != nullptr && !visible->value->getBool ())
+	    || (current->groupVisible != nullptr && !current->groupVisible->value->getBool ())) {
+	    return false;
+	}
+
+	if (!current->parent.has_value ()) {
+	    break;
+	}
+
+	const auto* parentObject = scene.getObject (current->parent.value ());
+	current = parentObject == nullptr ? nullptr : &parentObject->getObject ();
+    }
+
+    return true;
+}
+
 CImage::ResolvedTransform CImage::resolveTransform (const Object& object) const {
+    return resolveTransform (this->getScene (), object);
+}
+
+CImage::ResolvedTransform CImage::resolveTransform (const Wallpapers::CScene& scene, const Object& object) {
     constexpr int kMaxParentDepth = 32;
 
     // Walk up the parent chain leaf-first, bounded by kMaxParentDepth to guard
@@ -143,7 +181,7 @@ CImage::ResolvedTransform CImage::resolveTransform (const Object& object) const 
 	    sLog.error ("Parent transform chain is too deep; possible cycle at object id=", current->id);
 	    break;
 	}
-	const auto* parentObject = this->getScene ().getObject (current->parent.value ());
+	const auto* parentObject = scene.getObject (current->parent.value ());
 	if (parentObject == nullptr) {
 	    break;
 	}
@@ -629,8 +667,31 @@ void CImage::setup () {
 
     const auto& debug = this->getScene ().getContext ().getApp ().getContext ().settings.render.debug;
 
+    // compose layers with "copybackground": false start transparent instead of with the scene behind them,
+    // otherwise effects that move pixels around (scroll, fisheye...) show a shifted copy of the background
+    if (this->m_image.model->passthrough && !this->m_image.copyBackground) {
+	this->m_materials.compatibilityOverrides.emplace_back (
+	    std::make_unique<ImageEffectPassOverride> (ImageEffectPassOverride {
+		.id = -1,
+		.combos = {
+		    { "CLEARALPHA", 1 },
+		},
+		.constants = {},
+		.textures = {},
+	    })
+	);
+    }
+
     // copy pass to the composite layer
     for (const auto& cur : this->getImage ().model->material->passes) {
+	if (this->m_image.model->passthrough && !this->m_image.copyBackground) {
+	    this->m_passes.push_back (new CPass (
+		*this, std::make_shared<FBOProvider> (this), *cur, *this->m_materials.compatibilityOverrides.back (),
+		std::nullopt, std::nullopt
+	    ));
+	    continue;
+	}
+
 	this->m_passes.push_back (
 	    new CPass (*this, std::make_shared<FBOProvider> (this), *cur, std::nullopt, std::nullopt, std::nullopt)
 	);
@@ -920,7 +981,7 @@ void CImage::render () {
 	return;
     }
 
-    if (!this->getImage ().visible->value->getBool ()) {
+    if (!isVisibleInHierarchy (this->getScene (), this->getImage ())) {
 	return;
     }
 
@@ -1136,6 +1197,57 @@ void CImage::updateScreenSpacePosition () {
 }
 
 const Image& CImage::getImage () const { return this->m_image; }
+
+int CImage::getTextureAnimationFrameCount () const {
+    if (this->m_texture == nullptr || !this->m_texture->isAnimated ()) {
+	return 1;
+    }
+
+    return static_cast<int> (this->m_texture->getFrames ().size ());
+}
+
+int CImage::getTextureAnimationFrame () const {
+    if (this->m_pinnedAnimationFrame.has_value ()) {
+	return this->m_pinnedAnimationFrame.value ();
+    }
+
+    if (this->m_texture == nullptr || !this->m_texture->isAnimated () || this->getAnimationTime () <= 0.0) {
+	return 0;
+    }
+
+    // same timing CPass uses to pick the frame while the animation plays
+    double time = fmod (static_cast<double> (this->getContext ().getDriver ().getRenderTime ()), this->getAnimationTime ());
+    int index = 0;
+
+    for (const auto& frame : this->m_texture->getFrames ()) {
+	time -= frame->frametime;
+
+	if (time <= 0.0) {
+	    return index;
+	}
+
+	index++;
+    }
+
+    return 0;
+}
+
+void CImage::setTextureAnimationFrame (int frame) {
+    const int count = this->getTextureAnimationFrameCount ();
+    this->m_pinnedAnimationFrame = ((frame % count) + count) % count;
+}
+
+bool CImage::isTextureAnimationPlaying () const { return !this->m_pinnedAnimationFrame.has_value (); }
+
+void CImage::setTextureAnimationPlaying (bool playing) {
+    if (playing) {
+	this->m_pinnedAnimationFrame.reset ();
+    } else if (!this->m_pinnedAnimationFrame.has_value ()) {
+	this->m_pinnedAnimationFrame = this->getTextureAnimationFrame ();
+    }
+}
+
+std::optional<int> CImage::getPinnedAnimationFrame () const { return this->m_pinnedAnimationFrame; }
 
 glm::vec2 CImage::getSize () const {
     if (this->m_texture == nullptr) {

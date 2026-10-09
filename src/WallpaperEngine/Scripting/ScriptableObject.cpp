@@ -30,12 +30,12 @@ const std::map<std::string, ScriptableObject::PropertyEntry>& ScriptableObject::
     return this->m_properties;
 }
 
-void ScriptableObject::registerProperty (const std::string& name, DynamicValue& value) {
+void ScriptableObject::registerProperty (const std::string& name, DynamicValue& value, bool runScript) {
     auto inserted = this->m_properties.emplace (
 	name, PropertyEntry { .key = name + "_" + std::to_string (this->getId ()), .value = value }
     );
 
-    if (!inserted.second) {
+    if (!inserted.second || !runScript) {
 	return;
     }
 

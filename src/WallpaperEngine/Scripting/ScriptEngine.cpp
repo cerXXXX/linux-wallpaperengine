@@ -114,7 +114,12 @@ static void jsToDynamicValue (JSContext* ctx, JSValue val, DynamicValue& source)
     // scalar types returned directly
     int tag = JS_VALUE_GET_TAG (val);
 
-    if (tag == JS_TAG_UNDEFINED || tag == JS_TAG_UNINITIALIZED || tag == JS_TAG_NULL) {
+    // update () without a return value leaves the property alone
+    if (tag == JS_TAG_UNDEFINED || tag == JS_TAG_UNINITIALIZED) {
+	return;
+    }
+
+    if (tag == JS_TAG_NULL) {
 	source.update (DynamicValue::UpdateSource::Script);
 	return;
     }
@@ -126,6 +131,7 @@ static void jsToDynamicValue (JSContext* ctx, JSValue val, DynamicValue& source)
 
     if (tag == JS_TAG_BOOL) {
 	source.update (static_cast<bool> (JS_VALUE_GET_BOOL (val)), DynamicValue::UpdateSource::Script);
+	return;
     }
 
     if (JS_TAG_IS_FLOAT64 (tag)) {
@@ -153,14 +159,17 @@ static void jsToDynamicValue (JSContext* ctx, JSValue val, DynamicValue& source)
 	    JS_FreeValue (ctx, w);
 	});
 
-	if (!JS_IsNumber (x) || JS_IsNumber (y)) {
-	    sLog.exception ("Vector's x and y components must be numbers");
+	if (!JS_IsNumber (x) || !JS_IsNumber (y)) {
+	    sLog.error ("Vector's x and y components must be numbers");
+	    return;
 	}
 
 	double xVal = 0.0f, yVal = 0.0f, zVal = 0.0f, wVal = 0.0f;
 
 	JS_ToFloat64 (ctx, &xVal, x);
 	JS_ToFloat64 (ctx, &yVal, y);
+	JS_ToFloat64 (ctx, &zVal, z);
+	JS_ToFloat64 (ctx, &wVal, w);
 
 	if (!JS_IsNumber (z)) {
 	    source.update (glm::vec2 (xVal, yVal), DynamicValue::UpdateSource::Script);
@@ -174,6 +183,10 @@ static void jsToDynamicValue (JSContext* ctx, JSValue val, DynamicValue& source)
 
 	source.update (glm::vec4 (xVal, yVal, zVal, wVal), DynamicValue::UpdateSource::Script);
     }
+}
+
+void ScriptEngine::jsToDynamic (JSValue value, DynamicValue& target) const {
+    jsToDynamicValue (this->m_context, value, target);
 }
 
 ScriptEngine::ScriptEngine (Wallpapers::CScene& scene, Media::MediaSource& mediaSource) :
@@ -253,6 +266,7 @@ ScriptEngine::~ScriptEngine () {
 
     for (const auto& module : this->m_scriptModules | std::views::values) {
 	JS_FreeValue (this->m_context, module.module);
+	JS_FreeValue (this->m_context, module.thisLayer);
     }
 
     JS_FreeValue (this->m_context, this->m_globalThis);
@@ -552,6 +566,21 @@ void ScriptEngine::destroyLayer (ScriptLayerHandle handle) {
     this->m_layerInitialized.erase (handle);
 }
 
+std::string ScriptEngine::keyOf (const LoadedModule& module) const {
+    for (const auto& [key, value] : this->m_scriptModules) {
+	if (&value == &module) {
+	    return key;
+	}
+    }
+
+    return "script";
+}
+
+void ScriptEngine::activateModule (LoadedModule& module) {
+    this->m_runningModule = &module;
+    JS_SetPropertyStr (this->m_context, this->m_globalThis, "thisLayer", JS_DupValue (this->m_context, module.thisLayer));
+}
+
 JSValue ScriptEngine::call (JSValue module, int argc, JSValue argv[], const char* name) {
     // check if there's an update method and run it
     JSValue function = JS_GetPropertyStr (this->m_context, module, name);
@@ -577,14 +606,14 @@ void ScriptEngine::queueScript (const std::string& key, DynamicValue& currentVal
 	return;
     }
 
-    // load the script and store it
-    JSValue module = JS_Eval (this->m_context, source->c_str (), source->size (), key.c_str (), JS_EVAL_TYPE_MODULE);
-
+    // register the module first: its top level runs while it's loaded and can already reach thisLayer and
+    // createScriptProperties (), both need to know which module is running
     auto inserted = this->m_scriptModules.emplace (
 	key,
 	LoadedModule {
 	    .value = currentValue,
-	    .module = module,
+	    .module = JS_UNDEFINED,
+	    .thisLayer = this->m_adapters.object->instantiate (object),
 	}
     );
 
@@ -592,10 +621,32 @@ void ScriptEngine::queueScript (const std::string& key, DynamicValue& currentVal
 	return;
     }
 
-    JS_SetPropertyStr (this->m_context, this->m_globalThis, "thisLayer", this->m_adapters.object->instantiate (object));
+    auto& loaded = inserted.first->second;
+    this->activateModule (loaded);
 
-    // script properties do not need update as they're connected directly to the source data
-    this->m_runningModule = &inserted.first->second;
+    // keep the module's namespace, that's where the exported update () lives (evaluating a module only gives back
+    // its completion value)
+    JSValue compiled = JS_Eval (
+	this->m_context, source->c_str (), source->size (), key.c_str (),
+	JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY
+    );
+
+    if (JS_IsException (compiled)) {
+	logJSException (this->m_context, key.c_str ());
+	return;
+    }
+
+    auto* definition = static_cast<JSModuleDef*> (JS_VALUE_GET_PTR (compiled));
+    JSValue evaluated = JS_EvalFunction (this->m_context, compiled);
+
+    if (JS_IsException (evaluated)) {
+	logJSException (this->m_context, key.c_str ());
+	return;
+    }
+
+    JS_FreeValue (this->m_context, evaluated);
+    loaded.module = JS_GetModuleNamespace (this->m_context, definition);
+    JSValue module = loaded.module;
 
     // check if there's an update method and run it
     JSValue args[] = { this->dynamicToJs (currentValue) };
@@ -621,7 +672,8 @@ void ScriptEngine::tick () {
 
     // run all update methods
     for (auto& module : this->m_scriptModules | std::views::values) {
-	this->m_runningModule = &module;
+	// every script sees its own layer, not the last one that got loaded
+	this->activateModule (module);
 
 	JSValue args[] = { this->dynamicToJs (module.value) };
 	JSValue result = this->call (module.module, 1, args, "update");
@@ -631,6 +683,13 @@ void ScriptEngine::tick () {
 	});
 
 	if (JS_IsException (result)) {
+	    // report the first failure of every script, later ones would just repeat it every frame
+	    if (!module.reportedError) {
+		module.reportedError = true;
+		logJSException (this->m_context, this->keyOf (module).c_str ());
+	    } else {
+		JS_FreeValue (this->m_context, JS_GetException (this->m_context));
+	    }
 	    continue;
 	}
 
@@ -682,6 +741,7 @@ void ScriptEngine::notifyMediaUpdate (const Media::MediaSource::MediaInfo& media
     JSValue mediaThumbnailArgs[] = { mediaThumbnailEvent };
 
     for (auto& module : this->m_scriptModules | std::views::values) {
+	this->activateModule (module);
 	// call all methods
 	JSValue result1 = this->call (module.module, 1, propertiesArgs, "mediaPropertiesChanged");
 	JSValue result2 = this->call (module.module, 1, playbackArgs, "mediaPlaybackChanged");

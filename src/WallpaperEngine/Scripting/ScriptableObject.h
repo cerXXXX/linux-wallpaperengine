@@ -21,8 +21,19 @@ public:
 
     const std::map<std::string, PropertyEntry>& getProperties () const;
 
+    /** Texture animation controls exposed to scripts through thisLayer.getTextureAnimation () */
+    [[nodiscard]] virtual int getTextureAnimationFrameCount () const { return 0; }
+    [[nodiscard]] virtual int getTextureAnimationFrame () const { return 0; }
+    virtual void setTextureAnimationFrame (int frame) { }
+    [[nodiscard]] virtual bool isTextureAnimationPlaying () const { return false; }
+    virtual void setTextureAnimationPlaying (bool playing) { }
+
 protected:
-    void registerProperty (const std::string& name, DynamicValue& value);
+    /**
+     * @param runScript Whether the property's script (if any) should run as a property script, objects that drive
+     * the script themselves (text layers) register it without one
+     */
+    void registerProperty (const std::string& name, DynamicValue& value, bool runScript = true);
 
 private:
     std::map<std::string, PropertyEntry> m_properties;

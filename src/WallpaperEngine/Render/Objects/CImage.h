@@ -1,5 +1,7 @@
 #pragma once
 
+#include <optional>
+
 #include "CRenderable.h"
 #include "WallpaperEngine/Render/CObject.h"
 #include "WallpaperEngine/Render/Objects/Effects/CPass.h"
@@ -35,6 +37,14 @@ public:
     [[nodiscard]] const Image& getImage () const;
     [[nodiscard]] glm::vec2 getSize () const;
 
+    [[nodiscard]] int getTextureAnimationFrameCount () const override;
+    [[nodiscard]] int getTextureAnimationFrame () const override;
+    void setTextureAnimationFrame (int frame) override;
+    [[nodiscard]] bool isTextureAnimationPlaying () const override;
+    void setTextureAnimationPlaying (bool playing) override;
+    /** The sprite frame a script pinned the texture animation to, if any */
+    [[nodiscard]] std::optional<int> getPinnedAnimationFrame () const;
+
     [[nodiscard]] GLuint getSceneSpacePosition () const;
     [[nodiscard]] GLuint getCopySpacePosition () const;
     [[nodiscard]] GLuint getPassSpacePosition () const;
@@ -56,16 +66,30 @@ public:
      */
     void pinpongFramebuffer (std::shared_ptr<const CFBO>* drawTo, std::shared_ptr<const TextureProvider>* asInput);
 
-protected:
-    void setupPasses ();
-
-    void updateScreenSpacePosition ();
-
     struct ResolvedTransform {
 	glm::vec3 origin;
 	glm::vec3 scale;
 	float angle;
     };
+
+    /**
+     * Resolves the object's scene-space transform by folding in every parent's origin, scale and angle.
+     * Shared with the other renderables (text) that are parented to images or groups.
+     */
+    [[nodiscard]] static ResolvedTransform
+	resolveTransform (const Wallpapers::CScene& scene, const WallpaperEngine::Data::Model::Object& object);
+
+    /**
+     * Whether the object and every one of its parents are visible. Wallpapers hide whole groups (e.g. one per
+     * language or clock position) through the parent's visibility, so the children have to honor it too.
+     */
+    [[nodiscard]] static bool
+	isVisibleInHierarchy (const Wallpapers::CScene& scene, const WallpaperEngine::Data::Model::Object& object);
+
+protected:
+    void setupPasses ();
+
+    void updateScreenSpacePosition ();
 
     [[nodiscard]] ResolvedTransform resolveTransform (const WallpaperEngine::Data::Model::Object& object) const;
 
@@ -129,6 +153,8 @@ private:
     glm::vec2 m_size = {};
 
     bool m_initialized = false;
+    /** Set while a script holds the texture animation on a frame (setFrame, pause, stop) */
+    std::optional<int> m_pinnedAnimationFrame = std::nullopt;
 
     struct {
 	struct {

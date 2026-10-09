@@ -255,10 +255,17 @@ CPass::resolveTextureAnimationState (const std::shared_ptr<const TextureProvider
 	static_cast<double> (this->getContext ().getDriver ().getRenderTime ()), this->m_renderable.getAnimationTime ()
     );
 
+    // scripts can hold the sprite on a frame (thisLayer.getTextureAnimation ().setFrame (...))
+    std::optional<int> pinnedFrame = std::nullopt;
+    if (const auto* image = dynamic_cast<const CImage*> (&this->m_renderable); image != nullptr) {
+	pinnedFrame = image->getPinnedAnimationFrame ();
+    }
+
+    int frameIndex = 0;
     for (const auto& frameCur : texture->getFrames ()) {
 	currentRenderTime -= frameCur->frametime;
 
-	if (currentRenderTime > 0.0f) {
+	if (pinnedFrame.has_value () ? frameIndex++ != pinnedFrame.value () : currentRenderTime > 0.0f) {
 	    continue;
 	}
 

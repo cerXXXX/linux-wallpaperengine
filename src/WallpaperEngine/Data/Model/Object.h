@@ -117,6 +117,8 @@ struct ImageData {
     UserSettingUniquePtr colorBlendMode;
     /** The brightness of the image */
     UserSettingUniquePtr brightness;
+    /** Whether a passthrough (compose) layer starts from a copy of the scene behind it or from transparency */
+    bool copyBackground;
     /** The material in use for this image */
     ModelUniquePtr model;
     /** The effects applied to this image after the material is rendered */

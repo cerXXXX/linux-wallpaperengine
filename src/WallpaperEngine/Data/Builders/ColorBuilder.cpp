@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <format>
 #include <glm/vec3.hpp>
+#include <glm/vector_relational.hpp>
 
 const WallpaperEngine::Data::Model::Color WallpaperEngine::Data::Builders::ColorBuilder::White
     = WallpaperEngine::Data::Model::Color (1.0f, 1.0f, 1.0f, 1.0f);
@@ -58,6 +59,16 @@ WallpaperEngine::Data::Builders::ColorBuilder::parse (const std::string& value, 
     if (copy.find ('.') == std::string::npos) {
 	const auto final = vectorSize == 3 ? glm::ivec4 (VectorBuilder::parse<glm::ivec3> (copy), alpha * 255)
 					   : VectorBuilder::parse<glm::ivec4> (copy);
+
+	// integer colors are 0-255, but properties also write normalized colors without decimals ("1 1 1" is white
+	// in project.json), so only treat them as 0-255 when a channel goes past 1
+	const bool normalized = vectorSize == 3 ? glm::all (glm::lessThanEqual (glm::ivec3 (final), glm::ivec3 (1)))
+						: glm::all (glm::lessThanEqual (final, glm::ivec4 (1)));
+
+	if (normalized) {
+	    return { static_cast<float> (final.r), static_cast<float> (final.g), static_cast<float> (final.b),
+		     vectorSize == 3 ? alpha : static_cast<float> (final.a) };
+	}
 
 	return { final.r / 255.0f, final.g / 255.0f, final.b / 255.0f, final.a / 255.0f };
     }

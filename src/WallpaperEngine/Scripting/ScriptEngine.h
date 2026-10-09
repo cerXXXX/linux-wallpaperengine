@@ -47,6 +47,10 @@ public:
     struct LoadedModule {
 	DynamicValue& value;
 	JSValue module;
+	/** The layer the script belongs to, exposed as the global thisLayer while the module runs */
+	JSValue thisLayer;
+	/** Set once an exception from update () got logged */
+	bool reportedError = false;
     };
     struct JSObjectAdapters {
 	std::unique_ptr<Adapters::VectorAdapter<4>> vec4;
@@ -64,7 +68,13 @@ public:
     JSContext* getContext () const { return m_context; }
     JSValue getGlobalThis () const { return m_globalThis; }
     LoadedModule* getRunningModule () const { return m_runningModule; }
+    /** Marks the module as the running one and points the global thisLayer at its layer */
+    void activateModule (LoadedModule& module);
+    /** The key the module was registered with, used to tell scripts apart in the logs */
+    [[nodiscard]] std::string keyOf (const LoadedModule& module) const;
     JSValue dynamicToJs (DynamicValue& value) const;
+    /** Stores a JS value into a DynamicValue (scalars and vector-like objects) */
+    void jsToDynamic (JSValue value, DynamicValue& target) const;
 
     /**
      * Evaluate a WallpaperEngine script's update() function.
