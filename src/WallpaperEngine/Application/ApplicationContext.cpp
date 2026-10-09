@@ -501,6 +501,13 @@ void ApplicationContext::loadSettingsFromArgv () {
 	.flag ()
 	.store_into (this->settings.render.downscaleToOutput);
 
+    performanceGroup.add_argument ("--stream")
+	.help (
+	    "Renders without showing the window (needs --window for the size) and streams the frames live as "
+	    "H.264 (VA-API) in MPEG-TS to the given ffmpeg URL, e.g. udp://127.0.0.1:41234"
+	)
+	.store_into (this->settings.render.streamTarget);
+
     performanceGroup.add_argument ("--no-fullscreen-pause")
 	.help ("Prevents the background pausing when an app is fullscreen")
 	.flag ()

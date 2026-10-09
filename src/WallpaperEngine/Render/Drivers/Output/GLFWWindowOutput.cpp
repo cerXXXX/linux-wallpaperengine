@@ -14,8 +14,10 @@ GLFWWindowOutput::GLFWWindowOutput (ApplicationContext& context, VideoDriver& dr
 	sLog.exception ("Initializing window output when not in output mode, how did you get here?!");
     }
 
-    // window should be visible
-    driver.showWindow ();
+    // window should be visible, unless the frames are streamed somewhere else
+    if (this->m_context.settings.render.streamTarget.empty ()) {
+	driver.showWindow ();
+    }
 
     if (this->m_context.settings.render.mode == Application::ApplicationContext::EXPLICIT_WINDOW) {
 	this->m_fullWidth = this->m_context.settings.render.window.geometry.z;

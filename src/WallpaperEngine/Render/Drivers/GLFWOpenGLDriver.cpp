@@ -47,8 +47,13 @@ GLFWOpenGLDriver::GLFWOpenGLDriver (const char* windowTitle, ApplicationContext&
     glfwWindowHint (GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE);
 #endif /* DEBUG */
 
-    // create window, size doesn't matter as long as we don't show it
-    this->m_window = glfwCreateWindow (640, 480, windowTitle, nullptr, nullptr);
+    // create window, size doesn't matter as long as we don't show it. A streamed window is never shown, so its
+    // framebuffer keeps the size it's created with
+    glm::ivec2 windowSize = { 640, 480 };
+    if (!context.settings.render.streamTarget.empty ()) {
+	windowSize = { context.settings.render.window.geometry.z, context.settings.render.window.geometry.w };
+    }
+    this->m_window = glfwCreateWindow (windowSize.x, windowSize.y, windowTitle, nullptr, nullptr);
 
     if (this->m_window == nullptr) {
 	sLog.exception ("Cannot create window");
@@ -60,6 +65,18 @@ GLFWOpenGLDriver::GLFWOpenGLDriver (const char* windowTitle, ApplicationContext&
     // initialize glew for rendering
     if (const GLenum result = glewInit (); result != GLEW_OK) {
 	sLog.error ("Failed to initialize GLEW: ", glewGetErrorString (result));
+    }
+
+    if (!context.settings.render.streamTarget.empty ()) {
+	if (context.settings.render.mode != ApplicationContext::EXPLICIT_WINDOW) {
+	    sLog.exception ("--stream needs --window to know the size to render at");
+	}
+
+	// the window is never shown, nothing must wait for it to be presented
+	glfwSwapInterval (0);
+	this->m_stream = std::make_unique<FrameStream> (
+	    context.settings.render.streamTarget, context.settings.render.maximumFPS
+	);
     }
 
     // setup output
@@ -147,8 +164,14 @@ void GLFWOpenGLDriver::dispatchEventQueue () {
     // TODO: AS THOSE, MORE THAN LIKELY, WILL REQUIRE OF A DIFFERENT PROCESSING RATE
     // update the output with the given image
     this->m_output->updateRender ();
-    // do buffer swapping first
-    glfwSwapBuffers (this->m_window);
+
+    if (this->m_stream != nullptr) {
+	// hidden window: read the frame back from the back buffer, there's nothing to present
+	this->m_stream->pushFrame (this->m_output->getFullWidth (), this->m_output->getFullHeight ());
+    } else {
+	// do buffer swapping first
+	glfwSwapBuffers (this->m_window);
+    }
     // poll for events
     glfwPollEvents ();
     // increase frame counter

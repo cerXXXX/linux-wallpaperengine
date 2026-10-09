@@ -398,6 +398,8 @@ set(COMMON_SOURCES
     src/WallpaperEngine/Render/Drivers/Output/OutputViewport.h
     src/WallpaperEngine/Render/Drivers/GLFWOpenGLDriver.h
     src/WallpaperEngine/Render/Drivers/GLFWOpenGLDriver.cpp
+    src/WallpaperEngine/Render/Drivers/FrameStream.h
+    src/WallpaperEngine/Render/Drivers/FrameStream.cpp
     src/WallpaperEngine/Render/Drivers/VideoDriver.h
     src/WallpaperEngine/Render/Drivers/VideoDriver.cpp
     src/WallpaperEngine/Render/RenderContext.h

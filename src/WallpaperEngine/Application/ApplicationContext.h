@@ -127,6 +127,8 @@ public:
 	    std::vector<std::string> fullscreenPauseIgnoreAppIds;
 	    /** Render scenes and videos bigger than the output at the output's resolution instead of their own */
 	    bool downscaleToOutput;
+	    /** Live H.264 stream target (ffmpeg URL) for the rendered frames, the window stays hidden */
+	    std::string streamTarget;
 	    /** Render debugging switches for scene compatibility work */
 	    struct {
 		bool baseOnly;
@@ -206,6 +208,7 @@ public:
             .pauseOnFullscreenOnlyWhenActive = false,
             .fullscreenPauseIgnoreAppIds = {},
             .downscaleToOutput = false,
+            .streamTarget = "",
             .debug = {
                 .baseOnly = false,
                 .noSolidFinal = false,
