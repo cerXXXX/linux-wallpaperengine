@@ -46,6 +46,7 @@ CParticle::CParticle (Wallpapers::CScene& scene, const Particle& particle) :
 		m_useTrailRenderer = true;
 		m_trailLength = renderer.length;
 		m_ropeSegments = std::max (2, static_cast<int> (renderer.segments));
+		m_trailPoints = std::clamp (m_ropeSegments > 2 ? m_ropeSegments : 8, 2, ParticleInstance::MAX_TRAIL_POINTS);
 	    }
 	} else if (renderer.name == "spritetrail") {
 	    // spritetrail uses genericparticle with TRAILRENDERER combo
@@ -67,9 +68,12 @@ CParticle::CParticle (Wallpapers::CScene& scene, const Particle& particle) :
 
     // Calculate buffer sizes based on renderer type
     if (m_useRopeRenderer) {
-	// Rope: connects N particles with (N-1) segments, each subdivided into sub-segments
+	// Rope: connects N particles with (N-1) segments, each subdivided into sub-segments; ropetrail: one rope of
+	// m_trailPoints points per particle
 	const int subdivision = std::max (1, m_ropeSubdivision);
-	const int maxSubSegments = std::max (1, static_cast<int> (m_maxParticles - 1)) * subdivision;
+	const int maxSubSegments = (m_useTrailRenderer ? static_cast<int> (m_maxParticles) * (m_trailPoints - 1)
+						       : std::max (1, static_cast<int> (m_maxParticles - 1)))
+	    * subdivision;
 	m_vertices.resize (maxSubSegments * 4 * ROPE_FLOATS_PER_VERTEX);
 	m_indices.resize (maxSubSegments * 6);
     } else {
@@ -305,6 +309,10 @@ void CParticle::update (float dt) {
 	}
     }
 
+    if (m_useRopeRenderer && m_useTrailRenderer) {
+	this->recordTrails (dt);
+    }
+
     // Remove dead particles with order-preserving compaction.
     // Particles only die from natural lifetime expiry (age >= lifetime).
     // We never kill based on size — particles may fade in/out with oscillating size.
@@ -498,6 +506,8 @@ EmitterFunc CParticle::createBoxEmitter (const ParticleEmitter& emitter) {
 		p.lifetime = 1.0f * m_particle.instanceOverride.lifetime->value->getFloat ();
 		p.age = 0.0f;
 		p.alive = true;
+		p.trailCount = 0;
+		p.trailAge = 0.0f;
 		p.frame = -1.0f;
 
 		p.initial.color = p.color;
@@ -647,6 +657,8 @@ EmitterFunc CParticle::createSphereEmitter (const ParticleEmitter& emitter) {
 	    p.lifetime = lifetime;
 	    p.age = 0.0f;
 	    p.alive = true;
+	    p.trailCount = 0;
+	    p.trailAge = 0.0f;
 	    p.frame = -1.0f;
 
 	    p.initial.color = p.color;
@@ -2096,29 +2108,36 @@ void CParticle::renderSprites () {
 #endif
 }
 
-void CParticle::renderRope () {
-    if (m_particleCount < 2 || m_pass == nullptr) {
+void CParticle::recordTrails (float dt) {
+    // a point every interval, so a full trail covers the renderer's length
+    const float interval = std::max (m_trailLength, 0.01f) / static_cast<float> (m_trailPoints - 1);
+
+    for (uint32_t i = 0; i < m_particleCount; i++) {
+	auto& p = m_particles[i];
+	p.trailAge += dt;
+
+	if (p.trailCount > 0 && p.trailAge < interval) {
+	    continue;
+	}
+
+	p.trailAge = 0.0f;
+
+	if (p.trailCount == m_trailPoints - 1) {
+	    std::move (p.trail.begin () + 1, p.trail.begin () + p.trailCount, p.trail.begin ());
+	} else {
+	    p.trailCount++;
+	}
+
+	p.trail[p.trailCount - 1] = p.position;
+    }
+}
+
+void CParticle::appendRope (const std::vector<RopePoint>& points, uint32_t& vertexIndex, uint32_t& indexOffset) {
+    if (points.size () < 2) {
 	return;
     }
 
-    // Array is already in spawn order (oldest at index 0) thanks to order-preserving
-    // compaction in update(). All particles in [0, m_particleCount) are alive.
-    const uint32_t aliveCount = m_particleCount;
-
-    // Build vertex data with Catmull-Rom spline subdivision.
-    // Each segment between consecutive particles is subdivided into m_ropeSubdivision
-    // sub-segments for smooth curves instead of harsh corners at particle positions.
-    //
-    // Rope vertex layout (26 floats per vertex, THICKFORMAT):
-    // [0-3]   a_PositionVec4:   startPos.xyz, sizeStart
-    // [4-7]   a_TexCoordVec4:   endPos.xyz, trailLength
-    // [8-11]  a_TexCoordVec4C1: CP0.xyz, trailPosition
-    // [12-15] a_TexCoordVec4C2: CP1.xyz, sizeEnd
-    // [16-19] a_TexCoordVec4C3: colorEnd.rgba
-    // [20-21] a_TexCoordC4:     uvs.xy
-    // [22-25] a_Color:          colorStart.rgba
-
-    const uint32_t numSegments = aliveCount - 1;
+    const uint32_t numSegments = static_cast<uint32_t> (points.size ()) - 1;
     const int subdivision = std::max (1, m_ropeSubdivision);
 
     // Catmull-Rom spline evaluation
@@ -2138,10 +2157,10 @@ void CParticle::renderRope () {
     std::vector<glm::vec4> splineColors (totalPoints); // rgba
 
     for (uint32_t i = 0; i < numSegments; i++) {
-	const auto& p1 = m_particles[i];
-	const auto& p2 = m_particles[i + 1];
-	const auto& p0 = (i > 0) ? m_particles[i - 1] : p1;
-	const auto& p3 = (i + 2 < aliveCount) ? m_particles[i + 2] : p2;
+	const auto& p1 = points[i];
+	const auto& p2 = points[i + 1];
+	const auto& p0 = (i > 0) ? points[i - 1] : p1;
+	const auto& p3 = (i + 2 < static_cast<uint32_t> (points.size ())) ? points[i + 2] : p2;
 
 	for (int k = 0; k < subdivision; k++) {
 	    float t = static_cast<float> (k) / static_cast<float> (subdivision);
@@ -2149,15 +2168,15 @@ void CParticle::renderRope () {
 
 	    splinePositions[idx] = catmullRom (p0.position, p1.position, p2.position, p3.position, t);
 	    splineSizes[idx] = glm::mix (p1.size, p2.size, t);
-	    splineColors[idx] = glm::mix (glm::vec4 (p1.color, p1.alpha), glm::vec4 (p2.color, p2.alpha), t);
+	    splineColors[idx] = glm::mix (p1.color, p2.color, t);
 	}
     }
     // Last point is the final particle
     {
-	const auto& pLast = m_particles[aliveCount - 1];
+	const auto& pLast = points.back ();
 	splinePositions[totalPoints - 1] = pLast.position;
 	splineSizes[totalPoints - 1] = pLast.size;
-	splineColors[totalPoints - 1] = glm::vec4 (pLast.color, pLast.alpha);
+	splineColors[totalPoints - 1] = pLast.color;
     }
 
     // Second pass: build quads from consecutive spline points.
@@ -2165,8 +2184,6 @@ void CParticle::renderRope () {
     // 1/(trailLength-1) of UV space per quad. Express trailLength and trailPosition
     // in sub-segment units so each sub-segment quad gets the correct UV slice.
     // UV scale divides the effective length, making UVs exceed [0,1] → texture repeats.
-    uint32_t vertexIndex = 0;
-    uint32_t indexOffset = 0;
     const uint32_t totalSubSegments = totalPoints - 1;
     const float uvScale = (m_ropeUVScale > 0.0f) ? m_ropeUVScale : 1.0f;
     const float trailLength = static_cast<float> (totalSubSegments) / uvScale + 1.0f;
@@ -2274,6 +2291,63 @@ void CParticle::renderRope () {
 	m_indices[indexOffset++] = baseVertex + 2;
 	m_indices[indexOffset++] = baseVertex + 3;
 	m_indices[indexOffset++] = baseVertex + 0;
+    }
+
+}
+
+void CParticle::renderRope () {
+    if (m_particleCount < 2 || m_pass == nullptr) {
+	return;
+    }
+
+    // Array is already in spawn order (oldest at index 0) thanks to order-preserving
+    // compaction in update(). All particles in [0, m_particleCount) are alive.
+    const uint32_t aliveCount = m_particleCount;
+
+    // Build vertex data with Catmull-Rom spline subdivision.
+    // Each segment between consecutive particles is subdivided into m_ropeSubdivision
+    // sub-segments for smooth curves instead of harsh corners at particle positions.
+    //
+    // Rope vertex layout (26 floats per vertex, THICKFORMAT):
+    // [0-3]   a_PositionVec4:   startPos.xyz, sizeStart
+    // [4-7]   a_TexCoordVec4:   endPos.xyz, trailLength
+    // [8-11]  a_TexCoordVec4C1: CP0.xyz, trailPosition
+    // [12-15] a_TexCoordVec4C2: CP1.xyz, sizeEnd
+    // [16-19] a_TexCoordVec4C3: colorEnd.rgba
+    // [20-21] a_TexCoordC4:     uvs.xy
+    // [22-25] a_Color:          colorStart.rgba
+
+    uint32_t vertexIndex = 0;
+    uint32_t indexOffset = 0;
+    std::vector<RopePoint> points;
+
+    if (m_useTrailRenderer) {
+	// ropetrail: every particle draws its own trail, thinner and fainter towards its tail
+	for (uint32_t i = 0; i < aliveCount; i++) {
+	    const auto& p = m_particles[i];
+	    const int count = p.trailCount + 1;
+
+	    if (count < 2) {
+		continue;
+	    }
+
+	    points.clear ();
+
+	    for (int k = 0; k < count; k++) {
+		const float along = static_cast<float> (k + 1) / static_cast<float> (count);
+		const glm::vec3& position = k < p.trailCount ? p.trail[k] : p.position;
+		points.push_back ({ position, p.size * along, glm::vec4 (p.color, p.alpha * along) });
+	    }
+
+	    this->appendRope (points, vertexIndex, indexOffset);
+	}
+    } else {
+	for (uint32_t i = 0; i < aliveCount; i++) {
+	    const auto& p = m_particles[i];
+	    points.push_back ({ p.position, p.size, glm::vec4 (p.color, p.alpha) });
+	}
+
+	this->appendRope (points, vertexIndex, indexOffset);
     }
 
     m_activeIndexCount = static_cast<GLsizei> (indexOffset);

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+
 #include "CRenderable.h"
 #include "WallpaperEngine/Data/Model/Object.h"
 #include "WallpaperEngine/Render/Objects/Effects/CPass.h"
@@ -72,6 +74,12 @@ struct ParticleInstance {
     } initial;
 
     bool alive { false };
+
+    // ropetrail: where the particle was, oldest first (CParticle::recordTrails)
+    static constexpr int MAX_TRAIL_POINTS = 16;
+    std::array<glm::vec3, MAX_TRAIL_POINTS> trail {};
+    int trailCount { 0 };
+    float trailAge { 0.0f }; // since the last point was recorded
 
     // Get normalized lifetime position (0.0 to 1.0)
     float getLifetimePos () const { return lifetime > 0.0f ? (age / lifetime) : 1.0f; }
@@ -240,6 +248,22 @@ private:
     bool m_useRopeRenderer { false };
     int m_ropeSubdivision { 4 }; // Catmull-Rom subdivisions between points (smoothing)
     int m_ropeSegments { 4 }; // ropetrail: historical position snapshots per particle
+    int m_trailPoints { 8 }; // ropetrail: points of each particle's trail, the particle itself included
+
+    /** A point of a rope: a particle, or where a particle was (ropetrail) */
+    struct RopePoint {
+	glm::vec3 position;
+	float size;
+	glm::vec4 color;
+    };
+
+    /**
+     * ropetrail: records the particles' positions, so each one draws its own trail covering the renderer's length
+     * (seconds)
+     */
+    void recordTrails (float dt);
+    /** Adds the quads of one rope through the points to m_vertices/m_indices */
+    void appendRope (const std::vector<RopePoint>& points, uint32_t& vertexIndex, uint32_t& indexOffset);
     float m_ropeUVScale { 1.0f };
     bool m_ropeUVScrolling { false };
     bool m_ropeUVSmoothing { true }; // rope only
