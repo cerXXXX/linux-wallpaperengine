@@ -62,7 +62,7 @@ public:
     ~WaylandOpenGLDriver ();
 
     [[nodiscard]] Output::Output& getOutput () override;
-    float getRenderTime () const override;
+    float getClockTime () const override;
     bool closeRequested () override;
     void resizeWindow (glm::ivec2 size) override;
     void resizeWindow (glm::ivec4 sizeandpos) override;
@@ -71,6 +71,10 @@ public:
     glm::ivec2 getFramebufferSize () const override;
     uint32_t getFrameCounter () const override;
     void dispatchEventQueue () override;
+    void waitForEvents (const std::vector<int>& fds, int timeoutMs) override;
+    void renderHeldFrame () override;
+    void forgetHeldFrames () override;
+    void resumeRendering () override;
     [[nodiscard]] void* getProcAddress (const char* name) const override;
     [[nodiscard]] wl_display* getWaylandDisplay () const override;
 

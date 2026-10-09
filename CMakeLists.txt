@@ -400,6 +400,10 @@ set(COMMON_SOURCES
     src/WallpaperEngine/Render/Drivers/GLFWOpenGLDriver.cpp
     src/WallpaperEngine/Render/Drivers/FrameStream.h
     src/WallpaperEngine/Render/Drivers/FrameStream.cpp
+    src/WallpaperEngine/Render/Drivers/FrameHash.h
+    src/WallpaperEngine/Application/ControlChannel.h
+    src/WallpaperEngine/Application/ControlChannel.cpp
+    src/WallpaperEngine/Audio/Drivers/Detectors/GainRamp.h
     src/WallpaperEngine/Render/Drivers/VideoDriver.h
     src/WallpaperEngine/Render/Drivers/VideoDriver.cpp
     src/WallpaperEngine/Render/RenderContext.h

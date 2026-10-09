@@ -4,6 +4,7 @@
 #include <random>
 
 #include "WallpaperEngine/Application/ApplicationContext.h"
+#include "WallpaperEngine/Application/ControlChannel.h"
 #include "WallpaperEngine/Assets/AssetLocator.h"
 
 #include "WallpaperEngine/Render/CWallpaper.h"
@@ -71,6 +72,17 @@ public:
      * The compositor has shown a frame with the wallpaper's content on the viewport
      */
     void framePresented (const Render::Drivers::Output::OutputViewport* viewport);
+    /**
+     * Renders a frame of the held wallpaper on the viewport, shown only if it changed
+     *
+     * @param viewport
+     */
+    void renderHeld (Render::Drivers::Output::OutputViewport* viewport);
+    /**
+     * @return If the wallpaper is held still (eco mode): its animation time stopped and frames are only shown
+     * when they change
+     */
+    [[nodiscard]] bool isHeld () const;
     /**
      * Gets the output
      */
@@ -161,6 +173,24 @@ private:
     void initializePlaylists ();
     void updatePlaylists ();
     /**
+     * Runs the commands that came through the control channel
+     */
+    void runCommands ();
+    /**
+     * Holds the wallpaper still, or lets it animate again
+     *
+     * @param hold
+     */
+    void setHeld (bool hold);
+    /**
+     * Waits for the next second (or a command) and renders the held wallpaper
+     */
+    void renderHeldTick ();
+    /**
+     * Starts the held ticks: every second, just after the second changes
+     */
+    void armHeldTicks ();
+    /**
      * Lowers the render rate to the videos' own frame rate when every wallpaper is a plain video
      */
     void updateContentFrameRate ();
@@ -194,6 +224,13 @@ private:
     std::unique_ptr<WallpaperEngine::Media::MediaSource> m_mediaSource = nullptr;
     std::mt19937 m_playlistRng { std::random_device {}() };
     bool m_isPaused = false;
+    /** Commands from the standard input, see --control */
+    std::unique_ptr<ControlChannel> m_control = nullptr;
+    /** If eco mode was asked for; the wallpaper is held once it has shown its first frame for a moment */
+    bool m_ecoWanted = false;
+    bool m_held = false;
+    /** timerfd for the held ticks */
+    int m_heldTicks = -1;
     bool m_screenShotTaken = false;
     uint32_t m_nextFrameScreenshot = 0;
     std::chrono::steady_clock::time_point m_pauseStart {};

@@ -12,10 +12,18 @@ void audio_callback (void* userdata, uint8_t* streamData, int length) {
 
     memset (streamData, 0, length);
 
-    // if audio is playing do not do anything here!
-    if (driver->getAudioDetector ().anythingPlaying ()) {
+    // fade out while something else plays (or the wallpaper is muted) instead of cutting the sound
+    const SDL_AudioSpec& spec = driver->getSpec ();
+    const float seconds
+	= static_cast<float> (length) / (SDL_AUDIO_BITSIZE (spec.format) / 8 * spec.channels * spec.freq);
+    const float gain = driver->m_ramp.step (driver->getAudioDetector ().wantsSilence (), seconds);
+    driver->m_gain = gain;
+
+    if (gain <= 0.0f) {
 	return;
     }
+
+    const int volume = static_cast<int> (driver->getApplicationContext ().state.audio.volume * gain + 0.5f);
 
     SDL_LockMutex (driver->getStreamMutex ());
 
@@ -59,8 +67,7 @@ void audio_callback (void* userdata, uint8_t* streamData, int length) {
 
 	    // mix the audio
 	    SDL_MixAudioFormat (
-		streamDataPointer, &buffer->audio_buf[buffer->audio_buf_index], driver->getSpec ().format, len1,
-		driver->getApplicationContext ().state.audio.volume
+		streamDataPointer, &buffer->audio_buf[buffer->audio_buf_index], driver->getSpec ().format, len1, volume
 	    );
 
 	    streamLength -= len1;
@@ -162,3 +169,23 @@ int SDLAudioDriver::getChannels () const { return this->m_audioSpec.channels; }
 const SDL_AudioSpec& SDLAudioDriver::getSpec () const { return this->m_audioSpec; }
 
 SDL_mutex* SDLAudioDriver::getStreamMutex () const { return this->m_streamListMutex; }
+
+void SDLAudioDriver::update () {
+    AudioDriver::update ();
+
+    if (!this->m_initialized) {
+	return;
+    }
+
+    SDL_LockMutex (this->m_streamListMutex);
+    const bool haveStreams = !this->m_streams.empty ();
+    SDL_UnlockMutex (this->m_streamListMutex);
+
+    // a paused device doesn't run the callback, so the fade-in starts from silence once it's resumed
+    const bool idle = !haveStreams || (this->getAudioDetector ().wantsSilence () && this->m_gain <= 0.0f);
+
+    if (idle != this->m_devicePaused) {
+	SDL_PauseAudioDevice (this->m_deviceID, idle ? 1 : 0);
+	this->m_devicePaused = idle;
+    }
+}

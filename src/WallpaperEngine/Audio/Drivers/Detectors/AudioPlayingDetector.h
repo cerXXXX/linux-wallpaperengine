@@ -1,5 +1,8 @@
 #pragma once
 
+#include <atomic>
+#include <chrono>
+
 #include "WallpaperEngine/Application/ApplicationContext.h"
 #include "WallpaperEngine/Render/Drivers/Detectors/FullScreenDetector.h"
 
@@ -38,6 +41,18 @@ namespace Audio::Drivers::Detectors {
 	void setIsPlaying (bool newState);
 
 	/**
+	 * Fades the wallpaper's sound out (or back in) no matter what else is playing
+	 *
+	 * @param muted
+	 */
+	void setMuted (bool muted);
+	/**
+	 * @return If the wallpaper's sound should be faded out: it's muted, something else is playing, or something
+	 * else stopped playing less than RESUME_DELAY ago
+	 */
+	[[nodiscard]] bool wantsSilence () const;
+
+	/**
 	 * Checks if any audio is playing and updates state accordingly
 	 */
 	virtual void update ();
@@ -53,7 +68,11 @@ namespace Audio::Drivers::Detectors {
 	[[nodiscard]] const Render::Drivers::Detectors::FullScreenDetector& getFullscreenDetector () const;
 
     private:
-	bool m_isPlaying = false;
+	/** Read by the audio thread */
+	std::atomic<bool> m_isPlaying = false;
+	std::atomic<bool> m_muted = false;
+	/** When something else was last seen playing (steady clock, nanoseconds) */
+	std::atomic<int64_t> m_lastPlayingAt = 0;
 
 	Application::ApplicationContext& m_applicationContext;
 	const Render::Drivers::Detectors::FullScreenDetector& m_fullscreenDetector;

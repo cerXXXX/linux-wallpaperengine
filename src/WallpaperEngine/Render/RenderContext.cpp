@@ -7,6 +7,7 @@
 
 #include "WallpaperEngine/Data/Model/Project.h"
 #include "WallpaperEngine/Logging/Log.h"
+#include "WallpaperEngine/Render/Drivers/FrameHash.h"
 
 namespace WallpaperEngine::Render {
 RenderContext::RenderContext (
@@ -58,7 +59,39 @@ void RenderContext::framePresented (const Drivers::Output::OutputViewport* viewp
     }
 
     this->m_firstFrameReported = true;
+    this->m_firstFrameAt = std::chrono::steady_clock::now ();
     sLog.out ("First frame presented");
+}
+
+std::optional<std::chrono::steady_clock::time_point> RenderContext::firstFrameAt () const {
+    return this->m_firstFrameAt;
+}
+
+void RenderContext::renderHeld (Drivers::Output::OutputViewport* viewport) {
+    viewport->makeCurrent ();
+
+    const auto ref = this->m_wallpapers.find (viewport->name);
+
+    if (ref == this->m_wallpapers.end ()) {
+	return;
+    }
+
+    ref->second->render (
+	viewport->viewport, this->getOutput ().renderVFlip (), viewport->globalPosition, viewport->logicalSize
+    );
+
+    // nothing changed (the usual case: a clock without seconds, or no clock at all), the screen keeps the
+    // frame it has and the compositor has nothing to do
+    const uint64_t hash
+	= Drivers::hashFramebuffer (this->m_app.getDestinationFramebuffer (), viewport->viewport, this->m_heldPixels);
+
+    if (hash == viewport->heldFrameHash) {
+	return;
+    }
+
+    viewport->heldFrameHash = hash;
+    viewport->swappingContent = ref->second->hasContent ();
+    viewport->swapOutput ();
 }
 
 void RenderContext::setWallpaper (const std::string& display, std::shared_ptr<CWallpaper> wallpaper) {

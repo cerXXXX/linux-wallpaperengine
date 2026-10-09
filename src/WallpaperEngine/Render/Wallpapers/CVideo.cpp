@@ -3,6 +3,7 @@
 #include "WallpaperEngine/Data/Model/Project.h"
 #include "WallpaperEngine/Data/Model/Wallpaper.h"
 #include "WallpaperEngine/VideoPlayback/MPV/GLPlayer.h"
+#include <cmath>
 
 using namespace WallpaperEngine;
 using namespace WallpaperEngine::Render;
@@ -31,7 +32,9 @@ CVideo::CVideo (
     // --silent disables audio (audio.enabled = false) and must mute video wallpapers too;
     // a volume of 0 mutes the mpv backend (matching what --volume 0 already does).
     const auto& audioSettings = this->getContext ().getApp ().getContext ().settings.audio;
-    this->m_player->setVolume (audioSettings.enabled ? audioSettings.volume * 100.0 / 128.0 : 0.0);
+    this->m_baseVolume = audioSettings.enabled ? audioSettings.volume * 100.0 / 128.0 : 0.0;
+    this->m_appliedVolume = audioSettings.muted ? 0.0 : this->m_baseVolume;
+    this->m_player->setVolume (this->m_appliedVolume);
     // make sure the video has at least one usage marked, this ensures the video plays
     this->m_player->incrementUsageCount ();
 }
@@ -39,15 +42,18 @@ CVideo::CVideo (
 CVideo::~CVideo () { this->m_player->decrementUsageCount (); }
 
 void CVideo::renderFrame (const glm::ivec4& viewport) {
-    // ensure the video's audio follows audio detection rules
-    if (this->getContext ().getApp ().getContext ().settings.audio.enabled
-	&& this->m_muted != this->getAudioContext ().getDriver ().getAudioDetector ().anythingPlaying ()) {
-	this->m_muted = !this->m_muted;
+    // fade the video's sound out while something else plays or the wallpaper is muted, and back in after
+    if (this->m_baseVolume > 0.0) {
+	const float now = this->getContext ().getDriver ().getClockTime ();
+	const float seconds = this->m_lastRampTime > 0.0f ? now - this->m_lastRampTime : 0.0f;
+	this->m_lastRampTime = now;
 
-	if (this->m_muted) {
-	    this->m_player->setMuted ();
-	} else {
-	    this->m_player->clearMuted ();
+	const bool silence = this->getAudioContext ().getDriver ().getAudioDetector ().wantsSilence ();
+	const double volume = this->m_baseVolume * this->m_ramp.step (silence, seconds);
+
+	if (std::abs (volume - this->m_appliedVolume) >= 0.5 || (volume == 0.0) != (this->m_appliedVolume == 0.0)) {
+	    this->m_player->setVolume (volume);
+	    this->m_appliedVolume = volume;
 	}
     }
 

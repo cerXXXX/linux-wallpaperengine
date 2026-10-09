@@ -1,6 +1,8 @@
 #pragma once
 
+#include <chrono>
 #include <glm/vec4.hpp>
+#include <optional>
 #include <memory>
 #include <set>
 #include <vector>
@@ -44,6 +46,17 @@ namespace Render {
 	 * been shown this prints "First frame presented" (a launcher waits for it before freezing the process)
 	 */
 	void framePresented (const Drivers::Output::OutputViewport* viewport);
+	/**
+	 * Renders a frame of the held wallpaper and shows it only if it looks different from the last frame the
+	 * viewport showed while held
+	 *
+	 * @param viewport
+	 */
+	void renderHeld (Drivers::Output::OutputViewport* viewport);
+	/**
+	 * @return When every screen had shown its first frame, nothing before that
+	 */
+	[[nodiscard]] std::optional<std::chrono::steady_clock::time_point> firstFrameAt () const;
 	void setWallpaper (const std::string& display, std::shared_ptr<CWallpaper> wallpaper);
 	void setPause (bool newState) const;
 	[[nodiscard]] Input::InputContext& getInputContext () const;
@@ -68,6 +81,9 @@ namespace Render {
 	/** Screens whose wallpaper the compositor has shown a frame of */
 	std::set<std::string> m_presented = {};
 	bool m_firstFrameReported = false;
+	std::optional<std::chrono::steady_clock::time_point> m_firstFrameAt = std::nullopt;
+	/** Pixels read back to hash held frames */
+	std::vector<uint8_t> m_heldPixels = {};
     };
 } // namespace Render
 } // namespace WallpaperEngine

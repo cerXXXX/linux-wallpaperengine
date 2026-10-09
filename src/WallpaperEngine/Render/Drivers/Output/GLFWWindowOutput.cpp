@@ -15,7 +15,7 @@ GLFWWindowOutput::GLFWWindowOutput (ApplicationContext& context, VideoDriver& dr
     }
 
     // window should be visible, unless the frames are streamed somewhere else
-    if (this->m_context.settings.render.streamTarget.empty ()) {
+    if (!this->m_context.rendersOffscreen ()) {
 	driver.showWindow ();
     }
 

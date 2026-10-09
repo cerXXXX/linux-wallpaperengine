@@ -24,7 +24,7 @@ public:
     ~GLFWOpenGLDriver () override;
 
     [[nodiscard]] Output::Output& getOutput () override;
-    [[nodiscard]] float getRenderTime () const override;
+    [[nodiscard]] float getClockTime () const override;
     bool closeRequested () override;
     void resizeWindow (glm::ivec2 size) override;
     void resizeWindow (glm::ivec4 sizeandpos) override;
@@ -33,6 +33,8 @@ public:
     [[nodiscard]] glm::ivec2 getFramebufferSize () const override;
     [[nodiscard]] uint32_t getFrameCounter () const override;
     void dispatchEventQueue () override;
+    void renderHeldFrame () override;
+    void forgetHeldFrames () override;
     [[nodiscard]] void* getProcAddress (const char* name) const override;
 
     GLFWwindow* getWindow () const;
@@ -44,5 +46,11 @@ private:
     GLFWwindow* m_window = nullptr;
     uint32_t m_frameCounter = 0;
     std::unique_ptr<FrameStream> m_stream = nullptr;
+    /** Hash of the last frame shown while held, see hashFramebuffer */
+    uint64_t m_heldFrameHash = 0;
+    std::vector<uint8_t> m_heldPixels = {};
+
+    /** Writes the frame in m_heldPixels to --frame-file */
+    void writeFrameFile () const;
 };
 } // namespace WallpaperEngine::Render::Drivers

@@ -6,6 +6,7 @@
 #include <glm/vec2.hpp>
 #include <glm/vec4.hpp>
 #include <string>
+#include <vector>
 
 struct wl_display;
 
@@ -33,9 +34,39 @@ public:
      */
     [[nodiscard]] virtual Output::Output& getOutput () = 0;
     /**
+     * @return The animation time: the time since the driver started, minus the time it was held (see holdTime)
+     */
+    [[nodiscard]] float getRenderTime () const;
+    /**
      * @return The time that has passed since the driver started
      */
-    [[nodiscard]] virtual float getRenderTime () const = 0;
+    [[nodiscard]] virtual float getClockTime () const = 0;
+    /**
+     * Stops the animation time (getRenderTime) where it is, or lets it run again from there
+     *
+     * @param hold
+     */
+    void holdTime (bool hold);
+    /**
+     * Waits until one of the given file descriptors can be read or timeoutMs passes,
+     * handling the driver's own events in the meantime (but not rendering)
+     *
+     * @param fds
+     * @param timeoutMs -1 waits forever
+     */
+    virtual void waitForEvents (const std::vector<int>& fds, int timeoutMs);
+    /**
+     * Renders a frame of a held wallpaper and only shows it if it looks different from the last frame shown
+     */
+    virtual void renderHeldFrame ();
+    /**
+     * Makes the next held frame be shown even if it looks the same
+     */
+    virtual void forgetHeldFrames ();
+    /**
+     * Starts rendering continuously again after the wallpaper was held
+     */
+    virtual void resumeRendering ();
     /**
      * @return If a close was requested by the OS
      */
@@ -88,6 +119,11 @@ public:
     [[nodiscard]] Input::InputContext& getInputContext ();
 
 private:
+    bool m_timeHeld = false;
+    /** getClockTime when the time was held */
+    float m_heldAt = 0.0f;
+    /** All the time spent held so far */
+    float m_heldFor = 0.0f;
     /** App that owns this driver */
     WallpaperApplication& m_app;
     Input::InputContext m_inputContext;

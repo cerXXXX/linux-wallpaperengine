@@ -5,6 +5,9 @@
 
 #include "WallpaperEngine/Audio/AudioStream.h"
 #include "WallpaperEngine/Audio/Drivers/AudioDriver.h"
+#include "WallpaperEngine/Audio/Drivers/Detectors/GainRamp.h"
+
+#include <atomic>
 
 #include <SDL.h>
 
@@ -54,6 +57,16 @@ public:
 
     [[nodiscard]] SDL_mutex* getStreamMutex () const;
 
+    /**
+     * Stops the audio device while there's nothing to hear (no sounds, or faded out) so the sound card can go idle
+     */
+    void update () override;
+
+    /** Fade of the wallpaper's sound, only stepped by the audio callback */
+    Detectors::GainRamp m_ramp;
+    /** The ramp's gain, for the main thread */
+    std::atomic<float> m_gain = 1.0f;
+
 private:
     /** The mutex lock used to access the stream list mutex */
     SDL_mutex* m_streamListMutex;
@@ -63,6 +76,7 @@ private:
     SDL_AudioDeviceID m_deviceID;
     /** If the driver is initialized or not */
     bool m_initialized = false;
+    bool m_devicePaused = false;
     /** The sound output configuration */
     SDL_AudioSpec m_audioSpec {};
     /** All the playable steams */

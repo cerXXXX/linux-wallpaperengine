@@ -1,6 +1,7 @@
 #include "GLFWOpenGLDriver.h"
 #include "VideoFactories.h"
 #include "WallpaperEngine/Logging/Log.h"
+#include "WallpaperEngine/Render/Drivers/FrameHash.h"
 #include "WallpaperEngine/Render/Drivers/Output/GLFWWindowOutput.h"
 #ifdef ENABLE_X11
 #include "WallpaperEngine/Render/Drivers/Output/X11Output.h"
@@ -11,6 +12,7 @@
 
 #include <GLFW/glfw3native.h>
 
+#include <cstdio>
 #include <unistd.h>
 
 using namespace WallpaperEngine::Render::Drivers;
@@ -50,7 +52,7 @@ GLFWOpenGLDriver::GLFWOpenGLDriver (const char* windowTitle, ApplicationContext&
     // create window, size doesn't matter as long as we don't show it. A streamed window is never shown, so its
     // framebuffer keeps the size it's created with
     glm::ivec2 windowSize = { 640, 480 };
-    if (!context.settings.render.streamTarget.empty ()) {
+    if (context.rendersOffscreen ()) {
 	windowSize = { context.settings.render.window.geometry.z, context.settings.render.window.geometry.w };
     }
     this->m_window = glfwCreateWindow (windowSize.x, windowSize.y, windowTitle, nullptr, nullptr);
@@ -67,13 +69,16 @@ GLFWOpenGLDriver::GLFWOpenGLDriver (const char* windowTitle, ApplicationContext&
 	sLog.error ("Failed to initialize GLEW: ", glewGetErrorString (result));
     }
 
-    if (!context.settings.render.streamTarget.empty ()) {
+    if (context.rendersOffscreen ()) {
 	if (context.settings.render.mode != ApplicationContext::EXPLICIT_WINDOW) {
-	    sLog.exception ("--stream needs --window to know the size to render at");
+	    sLog.exception ("--stream and --frame-file need --window to know the size to render at");
 	}
 
 	// the window is never shown, nothing must wait for it to be presented
 	glfwSwapInterval (0);
+    }
+
+    if (!context.settings.render.streamTarget.empty ()) {
 	this->m_stream = std::make_unique<FrameStream> (
 	    context.settings.render.streamTarget, context.settings.render.maximumFPS
 	);
@@ -99,7 +104,7 @@ GLFWOpenGLDriver::~GLFWOpenGLDriver () { glfwTerminate (); }
 
 Output::Output& GLFWOpenGLDriver::getOutput () { return *this->m_output; }
 
-float GLFWOpenGLDriver::getRenderTime () const { return static_cast<float> (glfwGetTime ()); }
+float GLFWOpenGLDriver::getClockTime () const { return static_cast<float> (glfwGetTime ()); }
 
 bool GLFWOpenGLDriver::closeRequested () { return glfwWindowShouldClose (this->m_window); }
 
@@ -129,12 +134,18 @@ void GLFWOpenGLDriver::dispatchEventQueue () {
     // the target rate can drop below --fps while only videos are shown, so re-read it every frame
     const float minimumTime = 1.0f / this->m_context.getTargetFrameRate ();
     // get the start time of the frame
-    startTime = this->getRenderTime ();
+    startTime = this->getClockTime ();
     // clear the screen
     glClear (GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     for (const auto& [screen, viewport] : this->m_output->getViewports ()) {
 	this->getApp ().update (viewport);
+
+	// nothing waits for a hidden window, a frame with content counts as shown (an --eco wallpaper is held
+	// a moment after its first frame)
+	if (viewport->swappingContent) {
+	    this->getApp ().framePresented (viewport);
+	}
     }
 
     // read the full texture into the image
@@ -177,12 +188,82 @@ void GLFWOpenGLDriver::dispatchEventQueue () {
     // increase frame counter
     this->m_frameCounter++;
     // get the end time of the frame
-    endTime = this->getRenderTime ();
+    endTime = this->getClockTime ();
 
     // ensure the frame time is correct to not overrun FPS
     if ((endTime - startTime) < minimumTime) {
 	usleep ((minimumTime - (endTime - startTime)) * CLOCKS_PER_SEC);
     }
+}
+
+void GLFWOpenGLDriver::renderHeldFrame () {
+    // a new frame number, so the scene is rendered again instead of reusing the last frame
+    this->m_frameCounter++;
+
+    glClear (GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    for (const auto& [screen, viewport] : this->m_output->getViewports ()) {
+	this->getApp ().update (viewport);
+    }
+
+    const glm::ivec4 area = { 0, 0, this->m_output->getFullWidth (), this->m_output->getFullHeight () };
+    const uint64_t hash = hashFramebuffer (0, area, this->m_heldPixels);
+
+    if (hash != this->m_heldFrameHash) {
+	this->m_heldFrameHash = hash;
+
+	if (!this->m_context.settings.render.frameFile.empty ()) {
+	    this->writeFrameFile ();
+	} else if (this->m_stream != nullptr) {
+	    this->m_stream->pushFrame (area.z, area.w);
+	} else {
+	    glfwSwapBuffers (this->m_window);
+	}
+    }
+
+    glfwPollEvents ();
+}
+
+void GLFWOpenGLDriver::forgetHeldFrames () { this->m_heldFrameHash = 0; }
+
+void GLFWOpenGLDriver::writeFrameFile () const {
+    const int width = this->m_output->getFullWidth ();
+    const int height = this->m_output->getFullHeight ();
+    const std::string& path = this->m_context.settings.render.frameFile;
+    const std::string temporary = path + ".tmp";
+
+    // RGBA bottom row first -> RGB top row first
+    std::vector<uint8_t> rgb (static_cast<size_t> (width) * height * 3);
+
+    for (int y = 0; y < height; y++) {
+	const uint8_t* from = &this->m_heldPixels[static_cast<size_t> (height - 1 - y) * width * 4];
+	uint8_t* to = &rgb[static_cast<size_t> (y) * width * 3];
+
+	for (int x = 0; x < width; x++, from += 4, to += 3) {
+	    to[0] = from[0];
+	    to[1] = from[1];
+	    to[2] = from[2];
+	}
+    }
+
+    FILE* file = fopen (temporary.c_str (), "wb");
+
+    if (file == nullptr) {
+	sLog.error ("Cannot write the frame to ", temporary);
+	return;
+    }
+
+    fprintf (file, "P6\n%d %d\n255\n", width, height);
+    const bool written = fwrite (rgb.data (), 1, rgb.size (), file) == rgb.size ();
+    fclose (file);
+
+    // readers never see half a frame
+    if (!written || rename (temporary.c_str (), path.c_str ()) != 0) {
+	sLog.error ("Cannot write the frame to ", path);
+	return;
+    }
+
+    sLog.out ("Frame written");
 }
 
 void* GLFWOpenGLDriver::getProcAddress (const char* name) const {

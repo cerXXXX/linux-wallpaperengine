@@ -101,6 +101,11 @@ static void surfaceFrameCallback (void* data, struct wl_callback* cb, uint32_t t
     if (viewport->callbackHasContent) {
 	viewport->getDriver ()->getApp ().framePresented (viewport);
     }
+    // a held wallpaper is rendered on its own schedule (WallpaperApplication::renderHeld), not as fast as the
+    // compositor asks
+    if (viewport->getDriver ()->getApp ().isHeld ()) {
+	return;
+    }
     viewport->rendering = true;
     viewport->getDriver ()->getApp ().update (viewport);
     viewport->rendering = false;
@@ -268,6 +273,11 @@ void WaylandOutputViewport::swapOutput () {
     this->callbackInitialized = true;
 
     this->makeCurrent ();
+    // a held wallpaper can show a frame before the compositor answered the last one (it doesn't answer hidden
+    // surfaces); keep one request, or two chains of frames would run once rendering resumes
+    if (frameCallback != nullptr) {
+	wl_callback_destroy (frameCallback);
+    }
     frameCallback = wl_surface_frame (surface);
     callbackHasContent = swappingContent;
     wl_callback_add_listener (frameCallback, &frameListener, this);

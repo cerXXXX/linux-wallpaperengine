@@ -508,6 +508,29 @@ void ApplicationContext::loadSettingsFromArgv () {
 	)
 	.store_into (this->settings.render.streamTarget);
 
+    performanceGroup.add_argument ("--frame-file")
+	.help (
+	    "Renders without showing the window (needs --window for the size) and writes the frame to the given "
+	    "file (PPM) every time it changes, printing \"Frame written\"; meant to be used with --eco"
+	)
+	.store_into (this->settings.render.frameFile);
+
+    performanceGroup.add_argument ("--eco")
+	.help (
+	    "Holds the wallpaper still once its first frame is up: animations stop and a frame is only shown again "
+	    "when it looks different, i.e. when a clock, a text or the time of day changes (checked every second)"
+	)
+	.flag ()
+	.store_into (this->settings.render.eco);
+
+    performanceGroup.add_argument ("--control")
+	.help (
+	    "Reads commands from the standard input, one per line: \"eco on\", \"eco off\", \"fps <n>\", "
+	    "\"mute on\", \"mute off\""
+	)
+	.flag ()
+	.store_into (this->settings.render.control);
+
     performanceGroup.add_argument ("--no-fullscreen-pause")
 	.help ("Prevents the background pausing when an app is fullscreen")
 	.flag ()
@@ -546,6 +569,11 @@ void ApplicationContext::loadSettingsFromArgv () {
 	.help ("Disables the automute when an app is playing sound")
 	.flag ()
 	.action ([this] (const std::string& value) -> void { this->settings.audio.automute = false; });
+
+    audioGroup.add_argument ("--muted")
+	.help ("Starts with the sound faded out (\"mute off\" on the control channel fades it in)")
+	.flag ()
+	.store_into (this->settings.audio.muted);
 
     audioGroup.add_argument ("--no-audio-processing")
 	.help ("Disables audio processing for backgrounds")
@@ -754,6 +782,10 @@ float ApplicationContext::getTargetFrameRate () const {
     const float content = this->state.render.contentFrameRate;
 
     return content > 0.0f ? std::min (maximum, content) : maximum;
+}
+
+bool ApplicationContext::rendersOffscreen () const {
+    return !this->settings.render.streamTarget.empty () || !this->settings.render.frameFile.empty ();
 }
 
 int ApplicationContext::getArgc () const { return this->m_argc; }

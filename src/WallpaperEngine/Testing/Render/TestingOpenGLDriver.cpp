@@ -67,7 +67,7 @@ void* TestingOpenGLDriver::getProcAddress (const char* name) const {
     return reinterpret_cast<void*> (glfwGetProcAddress (name));
 }
 
-float TestingOpenGLDriver::getRenderTime () const { return static_cast<float> (glfwGetTime ()); }
+float TestingOpenGLDriver::getClockTime () const { return static_cast<float> (glfwGetTime ()); }
 
 bool TestingOpenGLDriver::closeRequested () { return glfwWindowShouldClose (this->m_window); }
 
@@ -94,7 +94,7 @@ uint32_t TestingOpenGLDriver::getFrameCounter () const { return this->m_frameCou
 void TestingOpenGLDriver::dispatchEventQueue () {
     static float startTime, endTime, minimumTime = 1.0f / this->m_context.settings.render.maximumFPS;
     // get the start time of the frame
-    startTime = this->getRenderTime ();
+    startTime = this->getClockTime ();
     // clear the screen
     glClear (GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -136,5 +136,5 @@ void TestingOpenGLDriver::dispatchEventQueue () {
     // increase frame counter
     this->m_frameCounter++;
     // get the end time of the frame
-    endTime = this->getRenderTime ();
+    endTime = this->getClockTime ();
 }

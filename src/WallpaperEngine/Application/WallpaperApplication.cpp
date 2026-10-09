@@ -24,7 +24,10 @@
 #endif /* DEMOMODE */
 
 #include <algorithm>
+#include <cerrno>
 #include <climits>
+#include <sstream>
+#include <sys/timerfd.h>
 #include <numeric>
 #include <ranges>
 #include <unistd.h>
@@ -936,6 +939,12 @@ void WallpaperApplication::setup () {
     this->prepareOutputs ();
     this->setupOpenGLDebugging ();
 
+    this->m_ecoWanted = this->m_context.settings.render.eco;
+
+    if (this->m_context.settings.render.control) {
+	this->m_control = std::make_unique<ControlChannel> ();
+    }
+
     if (this->m_context.settings.general.dumpStructure) {
 	auto prettyPrinter = Data::Dumpers::StringPrinter ();
 
@@ -960,11 +969,30 @@ void WallpaperApplication::setup () {
 #endif /* DEMOMODE */
 }
 
+/** How long a wallpaper keeps animating after its first frame before eco mode holds it (intros fading in) */
+static constexpr auto HOLD_WARMUP = std::chrono::seconds (1);
+
 void WallpaperApplication::render () {
     static time_t seconds;
     static struct tm* timeinfo;
 
-    if (this->m_isPaused) {
+    if (this->m_control) {
+	this->runCommands ();
+    }
+
+    if (this->m_ecoWanted != this->m_held) {
+	const auto firstFrameAt = this->m_renderContext->firstFrameAt ();
+
+	if (!this->m_ecoWanted) {
+	    this->setHeld (false);
+	} else if (firstFrameAt.has_value () && std::chrono::steady_clock::now () - *firstFrameAt >= HOLD_WARMUP) {
+	    this->setHeld (true);
+	}
+    }
+
+    if (this->m_held) {
+	this->renderHeldTick ();
+    } else if (this->m_isPaused) {
 	usleep (FULLSCREEN_CHECK_WAIT_TIME);
 	if (this->m_fullScreenDetector->anythingFullscreen () && this->m_context.state.general.keepRunning) {
 	    return;
@@ -1059,6 +1087,107 @@ void WallpaperApplication::render () {
 
     this->takeScreenshot (this->m_context.settings.screenshot.path);
     this->m_screenShotTaken = true;
+}
+
+void WallpaperApplication::runCommands () {
+    for (const std::string& line : this->m_control->take ()) {
+	std::istringstream words (line);
+	std::string command, argument;
+	words >> command >> argument;
+
+	if (command == "eco" && (argument == "on" || argument == "off")) {
+	    this->m_ecoWanted = argument == "on";
+	} else if (command == "mute" && (argument == "on" || argument == "off")) {
+	    this->m_audioDetector->setMuted (argument == "on");
+	} else if (command == "fps" && std::atoi (argument.c_str ()) > 0) {
+	    this->m_context.settings.render.maximumFPS = std::atoi (argument.c_str ());
+	} else if (!command.empty ()) {
+	    sLog.error ("Unknown command: ", line);
+	}
+    }
+}
+
+bool WallpaperApplication::isHeld () const { return this->m_held; }
+
+void WallpaperApplication::setHeld (const bool hold) {
+    this->m_held = hold;
+    // the animation time stops, so particles, shaders and texture animations freeze where they are, while scripts
+    // (clocks, dates) keep reading the real time
+    this->m_videoDriver->holdTime (hold);
+    // videos pause
+    this->m_renderContext->setPause (hold);
+
+    if (hold) {
+	sLog.out ("Holding the wallpaper still");
+	this->m_videoDriver->forgetHeldFrames ();
+	this->armHeldTicks ();
+    } else {
+	sLog.out ("Animating the wallpaper again");
+	constexpr itimerspec stop = {};
+	timerfd_settime (this->m_heldTicks, 0, &stop, nullptr);
+	this->m_videoDriver->resumeRendering ();
+    }
+}
+
+void WallpaperApplication::armHeldTicks () {
+    if (this->m_heldTicks < 0) {
+	this->m_heldTicks = timerfd_create (CLOCK_REALTIME, TFD_NONBLOCK | TFD_CLOEXEC);
+    }
+
+    timespec now {};
+    clock_gettime (CLOCK_REALTIME, &now);
+
+    // just after each whole second, so a clock changes when the second does; a clock change (time zone,
+    // suspend, NTP) cancels the timer, see renderHeldTick
+    itimerspec ticks = {};
+    ticks.it_interval.tv_sec = 1;
+    ticks.it_value.tv_sec = now.tv_sec + 1;
+    ticks.it_value.tv_nsec = 20 * 1000 * 1000;
+    timerfd_settime (this->m_heldTicks, TFD_TIMER_ABSTIME | TFD_TIMER_CANCEL_ON_SET, &ticks, nullptr);
+}
+
+void WallpaperApplication::renderHeldTick () {
+    std::vector<int> fds = { this->m_heldTicks };
+
+    if (this->m_control) {
+	fds.push_back (this->m_control->fd ());
+    }
+
+    this->m_videoDriver->waitForEvents (fds, -1);
+
+    uint64_t expirations;
+
+    if (read (this->m_heldTicks, &expirations, sizeof (expirations)) < 0) {
+	if (errno != ECANCELED) {
+	    // woken up by a command or the compositor, not by the clock
+	    if (this->m_videoDriver->closeRequested ()) {
+		this->m_context.state.general.keepRunning = false;
+	    }
+	    return;
+	}
+
+	// the clock jumped: align the ticks again and render right away
+	this->armHeldTicks ();
+    }
+
+    time_t seconds;
+    time (&seconds);
+    const tm* timeinfo = localtime (&seconds);
+    g_Daytime = static_cast<float> ((timeinfo->tm_hour * 60) + timeinfo->tm_min) / (24.0f * 60.0f);
+    g_TimeLast = g_Time = m_videoDriver->getRenderTime ();
+
+    // the sound (if any) keeps fading with what else plays
+    m_audioDriver->update ();
+    m_videoDriver->renderHeldFrame ();
+
+    if (m_videoDriver->closeRequested ()) {
+	sLog.out ("Stop requested by driver");
+	this->m_context.state.general.keepRunning = false;
+    }
+}
+
+void WallpaperApplication::renderHeld (Render::Drivers::Output::OutputViewport* viewport) {
+    m_renderContext->renderHeld (viewport);
 }
 
 void WallpaperApplication::cleanup () {

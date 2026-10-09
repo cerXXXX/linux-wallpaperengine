@@ -135,6 +135,12 @@ public:
 	    bool downscaleToOutput;
 	    /** Live H.264 stream target (ffmpeg URL) for the rendered frames, the window stays hidden */
 	    std::string streamTarget;
+	    /** File the frames are written to (as PPM) while the wallpaper is held, the window stays hidden */
+	    std::string frameFile;
+	    /** If the wallpaper starts held (eco mode): it only changes when its clocks, texts or time of day do */
+	    bool eco;
+	    /** If commands are read from the standard input (see ControlChannel) */
+	    bool control;
 	    /** Render debugging switches for scene compatibility work */
 	    struct {
 		bool baseOnly;
@@ -170,6 +176,8 @@ public:
 	    bool automute;
 	    /** If audio processing can be enabled or not */
 	    bool audioprocessing;
+	    /** If the audio starts muted (it can be unmuted through the control channel) */
+	    bool muted;
 	} audio;
 
 	/**
@@ -218,6 +226,9 @@ public:
             .fullscreenPauseIgnoreAppIds = {},
             .downscaleToOutput = false,
             .streamTarget = "",
+            .frameFile = "",
+            .eco = false,
+            .control = false,
             .debug = {
                 .baseOnly = false,
                 .noSolidFinal = false,
@@ -240,6 +251,7 @@ public:
             .volume = 15,
             .automute = true,
             .audioprocessing = true,
+            .muted = false,
         },
         .mouse = {
             .enabled = true,
@@ -258,6 +270,10 @@ public:
      * @return The frame rate to render at: --fps, lowered to the content's own rate when that is known and lower
      */
     [[nodiscard]] float getTargetFrameRate () const;
+    /**
+     * @return If the wallpaper is rendered in a hidden window (--stream, --frame-file) instead of on a screen
+     */
+    [[nodiscard]] bool rendersOffscreen () const;
 
     [[nodiscard]] int getArgc () const;
     [[nodiscard]] char** getArgv () const;

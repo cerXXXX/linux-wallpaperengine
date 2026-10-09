@@ -21,6 +21,8 @@ public:
     bool single;
     /** Whether the frame being swapped shows the wallpaper's content (set by the render context before swapping) */
     bool swappingContent = false;
+    /** Hash of the last frame shown while the wallpaper is held (see RenderContext::renderHeld), 0 if unknown */
+    uint64_t heldFrameHash = 0;
 
     /**
      * Activates output's context for drawing

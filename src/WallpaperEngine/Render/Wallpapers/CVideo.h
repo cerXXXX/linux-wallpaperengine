@@ -1,6 +1,7 @@
 #pragma once
 
 #include "WallpaperEngine/Audio/AudioStream.h"
+#include "WallpaperEngine/Audio/Drivers/Detectors/GainRamp.h"
 #include "WallpaperEngine/Render/CWallpaper.h"
 #include "WallpaperEngine/VideoPlayback/MPV/GLPlayer.h"
 
@@ -34,6 +35,11 @@ protected:
 private:
     GLPlayerUniquePtr m_player;
 
-    bool m_muted = false;
+    /** Fade of the video's sound, see GainRamp */
+    Audio::Drivers::Detectors::GainRamp m_ramp;
+    /** Volume set on the player, and the volume to fade from */
+    double m_baseVolume = 0.0;
+    double m_appliedVolume = -1.0;
+    float m_lastRampTime = 0.0f;
 };
 } // namespace WallpaperEngine::Render::Wallpapers

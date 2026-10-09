@@ -17,6 +17,7 @@ extern "C" {
 #undef static
 
 #include <algorithm>
+#include <poll.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -414,7 +415,7 @@ void WaylandOpenGLDriver::dispatchEventQueue () {
     // the target rate can drop below --fps while only videos are shown, so re-read it every frame
     const float minimumTime = 1.0f / this->m_context.getTargetFrameRate ();
     // get the start time of the frame
-    startTime = this->getRenderTime ();
+    startTime = this->getClockTime ();
 
     if (wl_display_dispatch (m_waylandContext.display) == -1) {
 	m_requestedExit = true;
@@ -422,7 +423,7 @@ void WaylandOpenGLDriver::dispatchEventQueue () {
 
     m_frameCounter++;
 
-    endTime = this->getRenderTime ();
+    endTime = this->getClockTime ();
 
     // ensure the frame time is correct to not overrun FPS
     if ((endTime - startTime) < minimumTime) {
@@ -430,9 +431,68 @@ void WaylandOpenGLDriver::dispatchEventQueue () {
     }
 }
 
+void WaylandOpenGLDriver::waitForEvents (const std::vector<int>& fds, int timeoutMs) {
+    wl_display* display = this->m_waylandContext.display;
+
+    // the usual dance to wait on the Wayland socket together with other file descriptors
+    while (wl_display_prepare_read (display) != 0) {
+	wl_display_dispatch_pending (display);
+    }
+
+    wl_display_flush (display);
+
+    std::vector<pollfd> pfds = { { .fd = wl_display_get_fd (display), .events = POLLIN, .revents = 0 } };
+
+    for (const int fd : fds) {
+	pfds.push_back ({ .fd = fd, .events = POLLIN, .revents = 0 });
+    }
+
+    if (poll (pfds.data (), pfds.size (), timeoutMs) > 0 && (pfds[0].revents & POLLIN)) {
+	wl_display_read_events (display);
+    } else {
+	wl_display_cancel_read (display);
+    }
+
+    if (wl_display_dispatch_pending (display) == -1) {
+	this->m_requestedExit = true;
+    }
+}
+
+void WaylandOpenGLDriver::renderHeldFrame () {
+    // a new frame number, so the scene is rendered again instead of reusing the last frame
+    this->m_frameCounter++;
+
+    for (Output::WaylandOutputViewport* viewport : this->m_screens) {
+	// only screens that already show something: the others start once their surface is configured
+	if (!viewport->callbackInitialized) {
+	    continue;
+	}
+
+	this->getApp ().renderHeld (viewport);
+    }
+}
+
+void WaylandOpenGLDriver::forgetHeldFrames () {
+    for (Output::WaylandOutputViewport* viewport : this->m_screens) {
+	viewport->heldFrameHash = 0;
+    }
+}
+
+void WaylandOpenGLDriver::resumeRendering () {
+    // frames are rendered when the compositor asks for the next one; a screen without a pending request
+    // would never ask again, so render it once to start over
+    for (Output::WaylandOutputViewport* viewport : this->m_screens) {
+	if (viewport->callbackInitialized && viewport->frameCallback == nullptr) {
+	    viewport->rendering = true;
+	    this->getApp ().update (viewport);
+	    viewport->rendering = false;
+	}
+    }
+}
+
 Output::Output& WaylandOpenGLDriver::getOutput () { return this->m_output; }
 
-float WaylandOpenGLDriver::getRenderTime () const {
+float WaylandOpenGLDriver::getClockTime () const {
     return static_cast<float> (std::chrono::duration_cast<std::chrono::microseconds> (
 				   std::chrono::high_resolution_clock::now () - renderStart
 	   )
