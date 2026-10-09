@@ -32,12 +32,14 @@ void FrameStream::start (int width, int height) {
 
     const std::string size = std::to_string (width) + "x" + std::to_string (height);
     const std::string fps = std::to_string (this->m_fps);
+    // a keyframe three times a second: a player joining the live stream shows garbage until the next one
+    const std::string keyframeInterval = std::to_string (std::max (1, this->m_fps / 3));
     // frames come bottom-up from glReadPixels; timestamps follow the wall clock so a slow frame doesn't make the
     // stream run fast, the player keeps up with a live source
     std::vector<std::string> args = {
 	"ffmpeg", "-hide_banner", "-loglevel", "error", "-use_wallclock_as_timestamps", "1", "-f", "rawvideo",
 	"-pix_fmt", "rgba", "-s", size, "-i", "-", "-vaapi_device", "/dev/dri/renderD128", "-vf",
-	"vflip,format=nv12,hwupload", "-c:v", "h264_vaapi", "-g", fps, "-bf", "0", "-bsf:v", "dump_extra", "-fps_mode", "passthrough",
+	"vflip,format=nv12,hwupload", "-c:v", "h264_vaapi", "-g", keyframeInterval, "-bf", "0", "-bsf:v", "dump_extra", "-fps_mode", "passthrough",
 	"-f", "mpegts", this->m_target,
     };
     std::vector<char*> argv;
