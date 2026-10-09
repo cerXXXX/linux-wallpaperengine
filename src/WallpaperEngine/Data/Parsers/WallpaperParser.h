@@ -16,5 +16,6 @@ private:
     static VideoUniquePtr parseVideo (const JSON& file, Project& project);
     static WebUniquePtr parseWeb (const JSON& file, Project& project);
     static ObjectList parseObjects (const JSON& objects, const Project& project);
+    static std::vector<std::string> findLayerScripts (const JSON& objects);
 };
 } // namespace WallpaperEngine::Data::Parsers

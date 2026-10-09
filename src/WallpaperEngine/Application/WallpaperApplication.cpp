@@ -14,6 +14,7 @@
 
 #include "WallpaperEngine/Data/Model/Property.h"
 #include "WallpaperEngine/Data/Model/Wallpaper.h"
+#include "WallpaperEngine/Data/Utils/SceneVisibility.h"
 #include "WallpaperEngine/Debugging/CallStack.h"
 #include "WallpaperEngine/FileSystem/Adapters/MediaCover.h"
 #include "WallpaperEngine/Media/DBusMediaSource.h"
@@ -25,6 +26,7 @@
 #include <algorithm>
 #include <climits>
 #include <numeric>
+#include <ranges>
 #include <unistd.h>
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <stb_image_write.h>
@@ -66,6 +68,12 @@ WallpaperApplication::WallpaperApplication (ApplicationContext& context) : m_con
     this->initializeSubsystems ();
     this->loadBackgrounds ();
     this->setupProperties ();
+
+    if (this->m_context.settings.general.onlyListLayers) {
+	this->listLayers ();
+	return;
+    }
+
     this->setupBrowser ();
     this->initializePlaylists ();
 }
@@ -541,6 +549,56 @@ void WallpaperApplication::setupPropertiesForProject (const Project& project) {
 void WallpaperApplication::setupProperties () {
     for (const auto& [background, info] : this->m_backgrounds) {
 	this->setupPropertiesForProject (*info);
+    }
+}
+
+void WallpaperApplication::listLayers () const {
+    using Json = Data::JSON::JSON;
+
+    for (const auto& project : this->m_backgrounds | std::views::values) {
+	if (!project->wallpaper->is<Scene> ()) {
+	    continue;
+	}
+
+	const auto& scene = *project->wallpaper->as<Scene> ();
+	// what the scene itself hides with the current properties, the user's own choices are left out
+	const auto visibility = Data::Utils::computeSceneVisibility (scene, {});
+	auto layers = Json::array ();
+
+	for (const auto& object : scene.objects) {
+	    std::string type = "group";
+	    auto effects = Json::array ();
+
+	    if (object->is<Image> ()) {
+		type = "image";
+
+		for (const auto& effect : object->as<Image> ()->effects) {
+		    effects.push_back ({
+			{ "id", effect->id },
+			{ "name", effect->name.empty () ? effect->effect->name : effect->name },
+			{ "hidden",
+			  !effect->visible->value->getBool () && !effect->visible->value->getScriptSource ().has_value () },
+		    });
+		}
+	    } else if (object->is<Text> ()) {
+		type = "text";
+	    } else if (object->is<Particle> ()) {
+		type = "particle";
+	    } else if (object->is<Sound> ()) {
+		type = "sound";
+	    }
+
+	    layers.push_back ({
+		{ "id", object->id },
+		{ "name", object->name },
+		{ "type", type },
+		{ "parent", object->parent.has_value () ? Json (object->parent.value ()) : Json (nullptr) },
+		{ "hidden", visibility.hidden.contains (object->id) },
+		{ "effects", effects },
+	    });
+	}
+
+	std::cout << Json ({ { "layers", layers } }).dump () << std::endl;
     }
 }
 

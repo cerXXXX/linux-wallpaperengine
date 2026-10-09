@@ -106,6 +106,8 @@ struct SceneData {
     } camera;
 
     ObjectList objects;
+    /** Scripts that look layers up (thisScene.getLayer ()), these might show a layer that starts hidden */
+    std::vector<std::string> layerScripts;
 };
 
 class Scene final : public Wallpaper, public SceneData {

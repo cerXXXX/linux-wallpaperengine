@@ -2,6 +2,7 @@
 
 #include "WallpaperEngine/Render/Camera.h"
 
+#include "WallpaperEngine/Data/Utils/SceneVisibility.h"
 #include "WallpaperEngine/Render/CWallpaper.h"
 #include "WallpaperEngine/Scripting/ScriptEngine.h"
 
@@ -45,6 +46,8 @@ public:
 
     [[nodiscard]] const std::vector<CObject*>& getObjectsByRenderOrder () const;
     [[nodiscard]] const CObject* getObject (int id) const;
+    /** Whether the user turned this layer effect off (--disable-effect) */
+    [[nodiscard]] bool isEffectDisabled (int id) const;
 
 protected:
     void renderFrame (const glm::ivec4& viewport) override;
@@ -61,6 +64,7 @@ private:
     std::unique_ptr<Camera> m_camera;
     ObjectUniquePtr m_bloomObjectData;
     CObject* m_bloomObject = nullptr;
+    Data::Utils::SceneVisibility m_visibility = {};
     std::map<int, CObject*> m_objects = {};
     std::vector<CObject*> m_objectsByRenderOrder = {};
     std::vector<DynamicValue*> m_scriptedValues = {};

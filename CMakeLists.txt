@@ -479,6 +479,8 @@ set(COMMON_SOURCES
     src/WallpaperEngine/Data/Model/Property.h
     src/WallpaperEngine/Data/Utils/TypeCaster.h
     src/WallpaperEngine/Data/Utils/BinaryReader.cpp
+    src/WallpaperEngine/Data/Utils/SceneVisibility.cpp
+    src/WallpaperEngine/Data/Utils/SceneVisibility.h
     src/WallpaperEngine/Data/Utils/BinaryReader.h
     src/WallpaperEngine/Data/Utils/MemoryStream.h
     src/WallpaperEngine/Data/Utils/SFINAE.h

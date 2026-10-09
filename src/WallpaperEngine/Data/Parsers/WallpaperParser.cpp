@@ -78,6 +78,7 @@ SceneUniquePtr WallpaperParser::parseScene (const JSON& file, Project& project) 
                 }
             },
             .objects = parseObjects (objects, project),
+            .layerScripts = findLayerScripts (objects),
         }
     );
 }
@@ -91,6 +92,42 @@ WebUniquePtr WallpaperParser::parseWeb (const JSON& file, Project& project) {
 	.filename = file,
 	.project = project,
     });
+}
+
+std::vector<std::string> WallpaperParser::findLayerScripts (const JSON& objects) {
+    std::vector<std::string> result;
+    std::vector<const JSON*> pending = { &objects };
+
+    while (!pending.empty ()) {
+	const JSON* current = pending.back ();
+	pending.pop_back ();
+
+	if (current->is_array ()) {
+	    for (const auto& value : *current) {
+		pending.push_back (&value);
+	    }
+	    continue;
+	}
+
+	if (!current->is_object ()) {
+	    continue;
+	}
+
+	for (const auto& [key, value] : current->items ()) {
+	    if (key != "script" || !value.is_string ()) {
+		pending.push_back (&value);
+		continue;
+	    }
+
+	    const auto& script = value.get_ref<const std::string&> ();
+
+	    if (script.find ("getLayer") != std::string::npos || script.find ("enumerateLayers") != std::string::npos) {
+		result.push_back (script);
+	    }
+	}
+    }
+
+    return result;
 }
 
 ObjectList WallpaperParser::parseObjects (const JSON& objects, const Project& project) {

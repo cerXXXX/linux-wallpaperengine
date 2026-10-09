@@ -83,6 +83,8 @@ public:
 	    bool onlyListProperties;
 	    /** If the user requested a dump of the background structure */
 	    bool dumpStructure;
+	    /** If the user requested the scene's layers and effects as JSON */
+	    bool onlyListLayers;
 	    /** If the user requested the particles to be deactivated */
 	    bool disableParticles;
 	    /** The path to the assets folder */
@@ -93,6 +95,10 @@ public:
 	    std::map<std::string, std::filesystem::path> screenBackgrounds;
 	    /** Properties to change values for */
 	    std::map<std::string, std::string> properties;
+	    /** Scene layers the user turned off, they're not loaded at all */
+	    std::vector<int> hiddenLayers;
+	    /** Layer effects the user turned off */
+	    std::vector<int> disabledEffects;
 	    /** The scaling mode for different screens */
 	    std::map<std::string, WallpaperEngine::Render::WallpaperState::TextureUVsScaling> screenScalings;
 	    /** The clamping mode for different screens */
@@ -191,10 +197,13 @@ public:
         .general = {
             .onlyListProperties = false,
             .dumpStructure = false,
+            .onlyListLayers = false,
             .assets = "",
             .defaultBackground = "",
             .screenBackgrounds = {},
             .properties = {},
+            .hiddenLayers = {},
+            .disabledEffects = {},
             .screenScalings = {},
             .screenClamps = {},
             .screenPlaylists = {},

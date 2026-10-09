@@ -654,7 +654,7 @@ void CImage::setup () {
 	// Some have attempted to declare effects with visible set to false.
 	bool allEffectsInvisible = true;
 	for (const auto& cur : this->m_image.effects) {
-	    if (cur->visible->value->getBool ()) {
+	    if (cur->visible->value->getBool () && !this->getScene ().isEffectDisabled (cur->id)) {
 		allEffectsInvisible = false;
 		break;
 	    }
@@ -703,6 +703,10 @@ void CImage::setup () {
 	for (const auto& cur : this->m_image.effects) {
 	    if (std::find (debug.skipEffects.begin (), debug.skipEffects.end (), static_cast<int> (cur->id))
 		!= debug.skipEffects.end ()) {
+		continue;
+	    }
+
+	    if (this->getScene ().isEffectDisabled (cur->id)) {
 		continue;
 	    }
 
@@ -790,7 +794,12 @@ void CImage::setup () {
     }
 
     if (!debug.baseOnly) {
-	const auto magentaCompositeTint = findMagentaCompositeTint (this->m_image, debug.skipEffects);
+	std::vector<int> skippedEffects = debug.skipEffects;
+	std::ranges::copy (
+	    this->getScene ().getContext ().getApp ().getContext ().settings.general.disabledEffects,
+	    std::back_inserter (skippedEffects)
+	);
+	const auto magentaCompositeTint = findMagentaCompositeTint (this->m_image, skippedEffects);
 	if (magentaCompositeTint.has_value ()) {
 	    auto tintOverride = std::make_unique<ImageEffectPassOverride> (ImageEffectPassOverride {
 		.id = -1,

@@ -101,6 +101,19 @@ CScene::CScene (
 
     glClearColor (clearColor.r, clearColor.g, clearColor.b, 1.0f);
 
+    // objects that stay hidden for the whole run (another language, another clock layout...) are never created,
+    // which saves loading their textures and compiling their shaders
+    this->m_visibility = Data::Utils::computeSceneVisibility (
+	*scene, this->getContext ().getApp ().getContext ().settings.general.hiddenLayers
+    );
+
+    if (!this->m_visibility.hidden.empty ()) {
+	sLog.out (
+	    "Skipping ", this->m_visibility.hidden.size () - this->m_visibility.required.size (), " of ",
+	    scene->objects.size (), " objects that are hidden for good"
+	);
+    }
+
     // create all objects based off their dependencies
     for (const auto& object : scene->objects) {
 	this->createObject (*object);
@@ -196,6 +209,10 @@ Render::CObject* CScene::createObject (const Object& object) {
     // ensure the item is not loaded already
     if (const auto current = this->m_objects.find (object.id); current != this->m_objects.end ()) {
 	return current->second;
+    }
+
+    if (this->m_visibility.skipCreation (object.id)) {
+	return nullptr;
     }
 
     // check dependencies too!
@@ -368,6 +385,10 @@ void CScene::renderFrame (const glm::ivec4& viewport) {
 	if (std::ranges::find (debug.skipObjects, cur->getId ()) != debug.skipObjects.end ()) {
 	    continue;
 	}
+	// hidden by the user but still created because a visible layer depends on it
+	if (this->m_visibility.hiddenByUser.contains (cur->getId ())) {
+	    continue;
+	}
 
 	cur->render ();
     }
@@ -431,6 +452,11 @@ const glm::vec2* CScene::getMousePositionNormalized () const { return &this->m_m
 const glm::vec2* CScene::getParallaxDisplacement () const { return &this->m_parallaxDisplacement; }
 
 const std::vector<CObject*>& CScene::getObjectsByRenderOrder () const { return this->m_objectsByRenderOrder; }
+
+bool CScene::isEffectDisabled (int id) const {
+    return std::ranges::find (this->getContext ().getApp ().getContext ().settings.general.disabledEffects, id)
+	!= this->getContext ().getApp ().getContext ().settings.general.disabledEffects.end ();
+}
 
 const CObject* CScene::getObject (int id) const {
     const auto object = this->m_objects.find (id);

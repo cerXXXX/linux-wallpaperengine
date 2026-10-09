@@ -115,6 +115,10 @@ private:
      */
     void setupPropertiesForProject (const Project& project);
     /**
+     * Prints the layers of every scene background as JSON (for --list-layers)
+     */
+    void listLayers () const;
+    /**
      * Prepares CEF browser to be used
      */
     void setupBrowser ();

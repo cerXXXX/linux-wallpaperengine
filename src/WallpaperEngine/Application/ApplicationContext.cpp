@@ -609,6 +609,38 @@ void ApplicationContext::loadSettingsFromArgv () {
 	})
 	.append ();
 
+    const auto parseIdList = [] (const std::string& value, std::vector<int>& into) -> void {
+	std::stringstream list (value);
+	std::string id;
+
+	while (std::getline (list, id, ',')) {
+	    try {
+		into.push_back (std::stoi (id));
+	    } catch (const std::exception&) {
+		sLog.exception ("Invalid layer or effect id: ", id);
+	    }
+	}
+    };
+
+    configurationGroup.add_argument ("--list-layers")
+	.help ("Prints the scene's layers and their effects as JSON, taking --set-property values into account")
+	.flag ()
+	.store_into (this->settings.general.onlyListLayers);
+
+    configurationGroup.add_argument ("--hide-layer")
+	.help ("Hides the scene layer with the given id (or comma-separated ids) and everything inside it")
+	.action ([this, parseIdList] (const std::string& value) -> void {
+	    parseIdList (value, this->settings.general.hiddenLayers);
+	})
+	.append ();
+
+    configurationGroup.add_argument ("--disable-effect")
+	.help ("Turns off the layer effect with the given id (or comma-separated ids)")
+	.action ([this, parseIdList] (const std::string& value) -> void {
+	    parseIdList (value, this->settings.general.disabledEffects);
+	})
+	.append ();
+
     auto& debuggingGroup = program.add_group ("Debugging options");
 
     debuggingGroup.add_argument ("-z", "--dump-structure")
