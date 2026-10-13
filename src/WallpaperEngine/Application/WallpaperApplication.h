@@ -229,6 +229,8 @@ private:
     /** If eco mode was asked for; the wallpaper is held once it has shown its first frame for a moment */
     bool m_ecoWanted = false;
     bool m_held = false;
+    /** Render the held wallpaper right away rather than on the next tick (it changed by a command) */
+    bool m_redrawHeld = false;
     /** timerfd for the held ticks */
     int m_heldTicks = -1;
     bool m_screenShotTaken = false;

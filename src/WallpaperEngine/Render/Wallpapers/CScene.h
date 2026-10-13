@@ -48,6 +48,11 @@ public:
     [[nodiscard]] const CObject* getObject (int id) const;
     /** Whether the user turned this layer effect off (--disable-effect) */
     [[nodiscard]] bool isEffectDisabled (int id) const;
+    /**
+     * Stops drawing these layers and everything inside them, or draws them again (the "hide-layers" command): unlike
+     * --hide-layer they're still created, so they can come back at once
+     */
+    void setLayersHiddenNow (const std::vector<int>& ids);
 
 protected:
     void renderFrame (const glm::ivec4& viewport) override;
@@ -65,6 +70,8 @@ private:
     ObjectUniquePtr m_bloomObjectData;
     CObject* m_bloomObject = nullptr;
     Data::Utils::SceneVisibility m_visibility = {};
+    /** Layers left out for now, see setLayersHiddenNow */
+    std::set<int> m_hiddenNow = {};
     std::map<int, CObject*> m_objects = {};
     std::vector<CObject*> m_objectsByRenderOrder = {};
     std::vector<DynamicValue*> m_scriptedValues = {};

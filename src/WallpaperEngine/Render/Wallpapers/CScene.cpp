@@ -389,9 +389,43 @@ void CScene::renderFrame (const glm::ivec4& viewport) {
 	if (this->m_visibility.hiddenByUser.contains (cur->getId ())) {
 	    continue;
 	}
+	if (this->m_hiddenNow.contains (cur->getId ())) {
+	    continue;
+	}
 
 	cur->render ();
     }
+}
+
+void CScene::setLayersHiddenNow (const std::vector<int>& ids) {
+    constexpr int kMaxParentDepth = 32;
+    std::map<int, const Object*> objects;
+
+    for (const auto& object : this->getScene ().objects) {
+	objects.emplace (object->id, object.get ());
+    }
+
+    this->m_hiddenNow.clear ();
+
+    for (const auto& object : this->getScene ().objects) {
+	const Object* current = object.get ();
+
+	for (int depth = 0; current != nullptr && depth <= kMaxParentDepth; ++depth) {
+	    if (std::ranges::find (ids, current->id) != ids.end ()) {
+		this->m_hiddenNow.insert (object->id);
+		break;
+	    }
+
+	    if (!current->parent.has_value ()) {
+		break;
+	    }
+
+	    const auto parent = objects.find (current->parent.value ());
+	    current = parent == objects.end () ? nullptr : parent->second;
+	}
+    }
+
+    sLog.out ("Hiding ", this->m_hiddenNow.size (), " objects for now");
 }
 
 void CScene::updateMouse (const glm::ivec4& viewport) {
