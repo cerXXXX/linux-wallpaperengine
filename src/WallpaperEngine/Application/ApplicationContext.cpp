@@ -526,7 +526,7 @@ void ApplicationContext::loadSettingsFromArgv () {
     performanceGroup.add_argument ("--control")
 	.help (
 	    "Reads commands from the standard input, one per line: \"eco on\", \"eco off\", \"fps <n>\", "
-	    "\"mute on\", \"mute off\""
+	    "\"mute on\", \"mute off\", \"hide-layers <ids>\" (without ids: draws them again)"
 	)
 	.flag ()
 	.store_into (this->settings.render.control);

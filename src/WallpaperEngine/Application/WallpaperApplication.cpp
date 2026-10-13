@@ -8,6 +8,7 @@
 #include "WallpaperEngine/Logging/Log.h"
 #include "WallpaperEngine/Render/Drivers/VideoFactories.h"
 #include "WallpaperEngine/Render/RenderContext.h"
+#include "WallpaperEngine/Render/Wallpapers/CScene.h"
 
 #include "WallpaperEngine/Data/Dumpers/StringPrinter.h"
 #include "WallpaperEngine/Data/Parsers/ProjectParser.h"
@@ -1176,6 +1177,26 @@ void WallpaperApplication::runCommands () {
 	    this->m_audioDetector->setMuted (argument == "on");
 	} else if (command == "fps" && std::atoi (argument.c_str ()) > 0) {
 	    this->m_context.settings.render.maximumFPS = std::atoi (argument.c_str ());
+	} else if (command == "hide-layers") {
+	    // "hide-layers 1,2,3" stops drawing those layers, a bare "hide-layers" draws them all again
+	    std::vector<int> ids;
+	    std::stringstream list (argument);
+	    std::string id;
+
+	    while (std::getline (list, id, ',')) {
+		if (!id.empty ()) {
+		    ids.push_back (std::atoi (id.c_str ()));
+		}
+	    }
+
+	    for (const auto& wallpaper : this->m_renderContext->getWallpapers () | std::views::values) {
+		if (wallpaper->is<Render::Wallpapers::CScene> ()) {
+		    wallpaper->as<Render::Wallpapers::CScene> ()->setLayersHiddenNow (ids);
+		}
+	    }
+
+	    // a held wallpaper shows the change now instead of on the next tick
+	    this->m_redrawHeld = true;
 	} else if (!command.empty ()) {
 	    sLog.error ("Unknown command: ", line);
 	}
@@ -1228,7 +1249,12 @@ void WallpaperApplication::renderHeldTick () {
 	fds.push_back (this->m_control->fd ());
     }
 
-    this->m_videoDriver->waitForEvents (fds, -1);
+    const bool redraw = this->m_redrawHeld;
+    this->m_redrawHeld = false;
+
+    if (!redraw) {
+	this->m_videoDriver->waitForEvents (fds, -1);
+    }
 
     uint64_t expirations;
 
@@ -1238,11 +1264,13 @@ void WallpaperApplication::renderHeldTick () {
 	    if (this->m_videoDriver->closeRequested ()) {
 		this->m_context.state.general.keepRunning = false;
 	    }
-	    return;
+	    if (!redraw) {
+		return;
+	    }
+	} else {
+	    // the clock jumped: align the ticks again and render right away
+	    this->armHeldTicks ();
 	}
-
-	// the clock jumped: align the ticks again and render right away
-	this->armHeldTicks ();
     }
 
     time_t seconds;
