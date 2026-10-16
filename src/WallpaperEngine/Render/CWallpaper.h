@@ -229,5 +229,10 @@ private:
     std::optional<SpanInfo> m_spanInfo = std::nullopt;
     /** Frame counter to avoid redundant renderFrame calls when shared across viewports */
     uint32_t m_lastRenderedFrame = UINT32_MAX;
+    bool m_texCoordsUploaded = false;
+    float m_lastUstart = 0.0f;
+    float m_lastUend = 0.0f;
+    float m_lastVstart = 0.0f;
+    float m_lastVend = 0.0f;
 };
 } // namespace WallpaperEngine::Render

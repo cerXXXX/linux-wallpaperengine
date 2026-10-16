@@ -210,6 +210,7 @@ private:
     GLuint a_TexCoord;
     GLuint a_Position;
     GLuint m_vao;
+    mutable bool m_attribsConfigured = false;
 
     // Custom geometry callbacks (for particles, etc.)
     GeometryCallback m_setupAttribsCallback;

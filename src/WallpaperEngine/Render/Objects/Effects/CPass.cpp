@@ -411,6 +411,10 @@ void CPass::setupRenderAttributes () const {
 	return;
     }
 
+    if (this->m_attribsConfigured) {
+	return;
+    }
+
     for (const auto& cur : this->m_attribs) {
 	glEnableVertexAttribArray (cur->id);
 	glBindBuffer (GL_ARRAY_BUFFER, *cur->value);
@@ -424,6 +428,8 @@ void CPass::setupRenderAttributes () const {
 	);
 #endif /* DEBUG */
     }
+
+    this->m_attribsConfigured = true;
 }
 
 void CPass::renderGeometry () const {
@@ -440,11 +446,6 @@ void CPass::renderGeometry () const {
 void CPass::cleanupRenderSetup () {
     if (this->m_cleanupAttribsCallback) {
 	this->m_cleanupAttribsCallback ();
-    } else {
-	// disable vertex attribs array
-	for (const auto& cur : this->m_attribs) {
-	    glDisableVertexAttribArray (cur->id);
-	}
     }
 
     // unbind all the used textures

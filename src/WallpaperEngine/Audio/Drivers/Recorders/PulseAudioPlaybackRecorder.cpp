@@ -233,6 +233,22 @@ void PulseAudioPlaybackRecorder::update () {
 
     this->m_captureData.fullFrameReady = false;
 
+    // Check for silence before running FFT
+    bool isSilent = true;
+    for (int i = 0; i < WAVE_BUFFER_SIZE; i++) {
+	if (std::abs (static_cast<int> (this->m_captureData.audioBuffer[i]) - 128) > 1) {
+	    isSilent = false;
+	    break;
+	}
+    }
+
+    if (isSilent) {
+	std::memset (this->m_FFTdestination64, 0, sizeof (this->m_FFTdestination64));
+	std::memset (this->m_FFTdestination32, 0, sizeof (this->m_FFTdestination32));
+	std::memset (this->m_FFTdestination16, 0, sizeof (this->m_FFTdestination16));
+	return;
+    }
+
     // convert audio data to deltas so the fft library can properly handle it
     for (int i = 0; i < WAVE_BUFFER_SIZE; i++) {
 	this->m_audioFFTbuffer[i] = (this->m_captureData.audioBuffer[i] - 128) / 128.0f;

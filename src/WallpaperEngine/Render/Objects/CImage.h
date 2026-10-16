@@ -153,6 +153,7 @@ private:
     glm::vec2 m_size = {};
 
     bool m_initialized = false;
+    bool m_geometryUploaded = false;
     /** Set while a script holds the texture animation on a frame (setFrame, pause, stop) */
     std::optional<int> m_pinnedAnimationFrame = std::nullopt;
 

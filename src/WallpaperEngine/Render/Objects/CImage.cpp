@@ -682,19 +682,21 @@ void CImage::setup () {
 	);
     }
 
-    // copy pass to the composite layer
-    for (const auto& cur : this->getImage ().model->material->passes) {
-	if (this->m_image.model->passthrough && !this->m_image.copyBackground) {
-	    this->m_passes.push_back (new CPass (
-		*this, std::make_shared<FBOProvider> (this), *cur, *this->m_materials.compatibilityOverrides.back (),
-		std::nullopt, std::nullopt
-	    ));
-	    continue;
-	}
+    // copy pass to the composite layer (skipped for bloom object which combines directly)
+    if (this->getId () != -1) {
+	for (const auto& cur : this->getImage ().model->material->passes) {
+	    if (this->m_image.model->passthrough && !this->m_image.copyBackground) {
+		this->m_passes.push_back (new CPass (
+		    *this, std::make_shared<FBOProvider> (this), *cur, *this->m_materials.compatibilityOverrides.back (),
+		    std::nullopt, std::nullopt
+		));
+		continue;
+	    }
 
-	this->m_passes.push_back (
-	    new CPass (*this, std::make_shared<FBOProvider> (this), *cur, std::nullopt, std::nullopt, std::nullopt)
-	);
+	    this->m_passes.push_back (
+		new CPass (*this, std::make_shared<FBOProvider> (this), *cur, std::nullopt, std::nullopt, std::nullopt)
+	    );
+	}
     }
 
     // prepare the passes list
@@ -845,7 +847,7 @@ void CImage::setup () {
     }
 
     // if there's more than one pass the blendmode has to be moved from the beginning to the end
-    if (this->m_passes.size () > 1) {
+    if (this->getId () != -1 && this->m_passes.size () > 1) {
 	const auto first = this->m_passes.begin ();
 	const auto last = this->m_passes.rbegin ();
 
@@ -863,7 +865,7 @@ void CImage::setupPasses () {
     // do a pass on everything and setup proper inputs and values
     std::shared_ptr<const CFBO> drawTo = this->m_currentMainFBO;
     std::shared_ptr<const TextureProvider> asInput = this->getTexture ();
-    GLuint texcoord = this->getTexCoordCopy ();
+    GLuint texcoord = (this->getId () == -1) ? this->getTexCoordPass () : this->getTexCoordCopy ();
 
     auto cur = this->m_passes.begin ();
     auto end = this->m_passes.end ();
@@ -878,7 +880,7 @@ void CImage::setupPasses () {
 	Effects::CPass* pass = *cur;
 	std::shared_ptr<const CFBO> prevDrawTo = drawTo;
 	bool writesToTarget = false;
-	const bool isFirstPass = first;
+	const bool isFirstPass = (this->getId () == -1) ? false : first;
 	GLuint spacePosition = (isFirstPass)
 	    ? (this->m_hasPuppetMesh ? this->m_puppetSpacePosition : this->getCopySpacePosition ())
 	    : this->getPassSpacePosition ();
@@ -1164,8 +1166,12 @@ CImage::ResolvedTransform CImage::updateGeometryBuffers () {
 	this->updatePuppetPositionBuffer (size);
     }
 
+    const glm::vec4 previousPos = this->m_pos;
     this->updateScenePosition (origin, size, scale, sceneWidth, sceneHeight);
-    this->uploadGeometryBuffers (size);
+    if (!this->m_geometryUploaded || size != previousSize || this->m_pos != previousPos) {
+	this->uploadGeometryBuffers (size);
+	this->m_geometryUploaded = true;
+    }
     return transform;
 }
 

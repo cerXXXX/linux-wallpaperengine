@@ -144,15 +144,27 @@ AssetLocatorUniquePtr WallpaperApplication::setupAssetLocator (const std::string
 		    { { "material", "materials/util/blur_h_bloom.json" },
 		      { "target", "_rt_Bloom" },
 		      { "bind", JSON::array ({ { { "name", "_rt_8FrameBuffer" }, { "index", 0 } } }) } },
-		    { { "material", "materials/util/combine.json" },
+		    { { "material", "materials/wpenginelinux/bloom_add.json" },
 		      { "target", "_rt_FullFrameBuffer" },
 		      { "bind",
 			JSON::array (
-			    { { { "name", "_rt_imageLayerComposite_-1_a" }, { "index", 0 } },
-			      { { "name", "_rt_Bloom" }, { "index", 1 } } }
+			    { { { "name", "_rt_Bloom" }, { "index", 0 } } }
 			) } } }
 	      ),
 	  } }
+    );
+
+    vfs.add (
+	"materials/wpenginelinux/bloom_add.json",
+	{ { "passes",
+	    JSON::array (
+		{ { { "blending", "additive" },
+		    { "cullmode", "nocull" },
+		    { "depthtest", "disabled" },
+		    { "depthwrite", "disabled" },
+		    { "shader", "commands/copy" },
+		    { "textures", JSON::array ({ "_rt_Bloom" }) } } }
+	    ) } }
     );
 
     vfs.add ("models/wpenginelinux.json", { { "material", "materials/wpenginelinux.json" } });
